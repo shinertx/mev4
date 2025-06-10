@@ -1,1 +1,13 @@
-pytest
+# Core & Utilities
+python-dotenv       # For loading .env files
+pydantic            # For robust settings validation
+structlog           # For structured, machine-readable logging
+
+# Blockchain & Web
+web3                # For Ethereum interaction
+requests            # For CEX/API communication
+
+# GCP & Monitoring
+google-cloud-secret-manager # For production secret management
+prometheus-client           # For exposing metrics
+sentry-sdk                  # For error reporting and performance monitoring
