@@ -1,5 +1,28 @@
-version: '3'
+# /infra/docker-compose.yml
+# Aligns with PROJECT_BIBLE.md: Section 4
+# - Simplifies local containerized development and testing.
+
+version: '3.8'
+
 services:
-  mev:
-    build: .
-    command: pytest
+  mev-og-app:
+    # Build the image from the Dockerfile in the current context (project root)
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+    
+    # Mount the local source code into the container.
+    # This allows for live code changes without rebuilding the image.
+    volumes:
+      - ../src:/home/appuser/src
+      - ../main.py:/home/appuser/main.py
+      # Mount a directory for DRP snapshots to persist them locally
+      - ../drp_snapshots:/home/appuser/drp_snapshots
+    
+    # Load environment variables from the .env file in the root directory.
+    # Make sure you have a .env file created from .env.example.
+    env_file:
+      - ../.env
+      
+    # Name the container for easier management
+    container_name: mev-og-nextgen
