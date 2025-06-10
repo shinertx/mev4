@@ -173,6 +173,4 @@ class AbstractStrategy:
 
 ---
 
-**Use this as the “first file” in your repo and as the preamble to every ChatGPT codegen prompt.  
-If you now want to start generating code, just tell me which module/file to begin with.**
-```
+**Use this as the “first file” in your repo and as the preamble to every LLM codegen prompt.  
