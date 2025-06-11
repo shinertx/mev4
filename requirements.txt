@@ -32,3 +32,7 @@ sentry-sdk
 # Testing
 pytest
 toxiproxy-python-client
+
+ # Testing
+ pytest
+-git+https://github.com/Shopify/toxiproxy-python-client.git#egg=toxiproxy-python-client
