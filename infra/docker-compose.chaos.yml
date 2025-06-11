@@ -1,0 +1,34 @@
+# /infra/docker-compose.chaos.yml
+version: '3.8'
+services:
+  toxiproxy:
+    image: shopify/toxiproxy:2.5.0
+    container_name: toxiproxy
+    ports:
+      - "8474:8474"
+      - "8666:8666"
+
+  mev-og-app-chaos:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+    container_name: mev-og-app-chaos
+    environment:
+      # Point the app to the proxy
+      - ETH_RPC_URL_1=http://toxiproxy:8666
+    depends_on:
+      - toxiproxy
+
+  test-runner:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+    container_name: test-runner
+    command: ["pytest", "test/chaos"]
+    volumes:
+      - ../:/app
+    depends_on:
+      - mev-og-app-chaos
+    environment:
+      - TOXIPROXY_URL=http://toxiproxy:8474
+      - PYTHONDONTWRITEBYTECODE=1
