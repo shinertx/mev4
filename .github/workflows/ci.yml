@@ -27,6 +27,8 @@ jobs:
         run: flake8 src/
       - name: Run Unit Tests
         run: pytest test/ --ignore=test/test_forked_sim.py
+      - name: Run Chaos Tests
+        run: pytest test/chaos/
   
   fork-simulation:
     runs-on: ubuntu-latest

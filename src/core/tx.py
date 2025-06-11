@@ -2,7 +2,7 @@
 # FINAL VERSION: Full async, uses resilient provider and durable nonce manager.
 import asyncio
 from typing import Dict, Any
-import redis
+import redis.asyncio as aioredis
 
 from src.core.config import settings
 from src.core.kill import check, KillSwitchActiveError
@@ -23,7 +23,7 @@ class TransactionManager:
         self.account = self.provider.account
         self.address = self.provider.address
         self.nonce_manager = NonceManager(self.w3, self.address)
-        self.redis = redis.Redis.from_url(settings.REDIS_URL)
+        self.redis = aioredis.from_url(settings.REDIS_URL)
         self.is_initialized = False
 
     async def initialize(self):
@@ -47,8 +47,8 @@ class TransactionManager:
             raise TransactionKillSwitchError("Kill switch is active. Halting transaction.")
         
         lock = self.redis.lock(f"nonce_lock:{self.address}", timeout=10)
-        with lock:
-            current_nonce = await self.nonce_manager.get_nonce()
+        async with lock:
+            current_nonce = await self.nonce_manager.get()
             try:
                 full_tx_params = {
                     'from': self.address,
@@ -71,7 +71,7 @@ class TransactionManager:
                 tx_hash = await self.w3.eth.send_raw_transaction(signed_tx.rawTransaction)
 
                 # Increment durable nonce ONLY on successful broadcast
-                await self.nonce_manager.increment()
+                await self.nonce_manager.bump()
 
                 log.info("ASYNC_TRANSACTION_BROADCASTED", tx_hash=tx_hash.hex(), nonce=current_nonce)
                 return tx_hash.hex()
@@ -80,6 +80,7 @@ class TransactionManager:
                 # A sophisticated system might try to re-sync the nonce here on specific errors.
                 raise
 
-    def close(self):
+    async def close(self):
         """Closes resources like the nonce file lock."""
+        await self.redis.close()
         self.nonce_manager.close()

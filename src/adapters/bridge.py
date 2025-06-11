@@ -67,6 +67,7 @@ class StargateBridgeAdapter:
         return tx_hash
 
     def verify_bridge_event(self, root: str, leaf: str, proof: list[str], relayer_sig: str | None = None, relayer_pubkey_pem: str | None = None) -> bool:
+        self._check_kill_switch()
         if proof:
             if not self.mt.validate_proof(proof, leaf, root):
                 raise ValueError("Invalid Merkle proof")

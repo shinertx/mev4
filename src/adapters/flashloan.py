@@ -98,6 +98,7 @@ class FlashloanAdapter:
         Returns:
             A single bytes payload to be passed as `params` to the flash loan.
         """
+        self._check_kill_switch()
         # For our simple contract, we can just concatenate the calls.
         # This implementation requires a more sophisticated receiver that can loop
         # through and decode multiple calls.

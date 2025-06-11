@@ -19,17 +19,14 @@ class KillSwitchActiveError(Exception):
     """Raised when the global kill switch is engaged."""
     pass
 
-_storage_client = None
-
 def get_gcs_client():
-    global _storage_client
-    if _storage_client is None and IS_GCP_CONFIGURED:
-        try:
-            _storage_client = storage.Client()
-        except Exception as e:
-            log.critical("GCS_CLIENT_INITIALIZATION_FAILED", error=str(e))
-            return None
-    return _storage_client
+    if not IS_GCP_CONFIGURED:
+        return None
+    try:
+        return storage.Client()
+    except Exception as e:
+        log.critical("GCS_CLIENT_INITIALIZATION_FAILED", error=str(e))
+        return None
 
 def is_kill_switch_active() -> bool:
     client = get_gcs_client()

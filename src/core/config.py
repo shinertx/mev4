@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     BINANCE_API_KEY: SecretStr | None = None
     BINANCE_API_SECRET: SecretStr | None = None
     SENTRY_DSN: AnyUrl | None = None
+    AI_MODEL_API_URL: AnyUrl = "https://api.openai.com/v1/chat/completions"
+    CEX_BASE_URL: AnyUrl = "https://api.binance.com"
 
     # Operational Settings
     LOG_LEVEL: str = "INFO"

@@ -15,7 +15,7 @@ from src.core.decorators import retriable_network_call
 log = get_logger(__name__)
 
 class CexAdapter:
-    BASE_URL = "https://api.binance.com"
+    BASE_URL = settings.CEX_BASE_URL
     
     async def _send_signed_request(self, method: str, endpoint: str, params: dict = None) -> dict:
         check()
