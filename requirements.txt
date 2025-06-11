@@ -1,18 +1,4 @@
 # Core & Utilities
-python-dotenv       # For loading .env files
-pydantic            # For robust settings validation
-structlog           # For structured, machine-readable logging
-
-# Blockchain & Web
-web3                # For Ethereum interaction
-requests            # For CEX/API communication
-
-# GCP & Monitoring
-google-cloud-secret-manager # For production secret management
-prometheus-client           # For exposing metrics
-sentry-sdk                  # For error reporting and performance monitoring
-
-# Core & Utilities
 python-dotenv
 pydantic
 structlog
@@ -23,7 +9,13 @@ hvac
 web3
 requests
 
+# Async & I/O
+aiofiles
+aiohttp
+websockets
+
 # GCP & Monitoring
+google-cloud-secret-manager
 google-cloud-storage
 google-api-core
 prometheus-client
@@ -31,8 +23,4 @@ sentry-sdk
 
 # Testing
 pytest
-toxiproxy-python-client
-
- # Testing
- pytest
--git+https://github.com/Shopify/toxiproxy-python-client.git#egg=toxiproxy-python-client
+git+https://github.com/Shopify/toxiproxy-python-client.git#egg=toxiproxy-python-client
