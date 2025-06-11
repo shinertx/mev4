@@ -2,7 +2,7 @@
 import os
 from datetime import datetime, timezone
 from google.cloud import storage
-from google.api_core.exceptions import NotFound, GoogleAPICallError
+from google.api_core.exceptions import GoogleAPICallError
 from src.core.config import settings
 from src.core.logger import get_logger, KILL_TRIGGERED
 import sentry_sdk

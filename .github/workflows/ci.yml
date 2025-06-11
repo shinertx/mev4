@@ -23,6 +23,8 @@ jobs:
         run: |
           pip install -r requirements.txt
           pip install pytest flake8
+      - name: Start Fork
+        run: ./scripts/simulate_fork.sh &
       - name: Lint with flake8
         run: flake8 src/
       - name: Run Unit Tests
@@ -45,7 +47,11 @@ jobs:
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
       - name: Install dependencies
-        run: pip install -r requirements.txt && pip install pytest
+        run: pip install -r requirements.txt && pip install pytest flake8
+      - name: Lint with flake8
+        run: flake8 src/ test/
+      - name: Run Unit Tests
+        run: pytest test/ --ignore=test/test_forked_sim.py
       - name: Run Fork Simulation
         run: |
           ./scripts/simulate_fork.sh &

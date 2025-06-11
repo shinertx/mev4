@@ -5,7 +5,7 @@ import websockets
 from websockets.exceptions import ConnectionClosed
 
 from src.core.config import settings
-from src.core.kill import check, KillSwitchActiveError, is_kill_switch_active
+from src.core.kill import check, KillSwitchActiveError
 from src.core.logger import get_logger
 
 log = get_logger(__name__)
@@ -36,10 +36,11 @@ class MempoolAdapter:
             raise
 
     async def stream_transactions(self):
-        while not is_kill_switch_active():
+        while True:
             try:
                 check()
             except KillSwitchActiveError:
+                log.critical("MEMPOOL_ABORTED_BY_KILL_SWITCH")
                 break
             if not self.connection or self.connection.closed:
                 try:
@@ -66,5 +67,4 @@ class MempoolAdapter:
                 log.error("MEMPOOL_STREAM_ERROR", error=str(e))
                 await asyncio.sleep(1)
 
-        log.critical("MEMPOOL_ABORTED_BY_KILL_SWITCH")
         return

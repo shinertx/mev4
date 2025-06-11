@@ -8,7 +8,7 @@ from typing import List, Dict
 from decimal import Decimal
 
 from src.core.tx import TransactionManager, TransactionKillSwitchError
-from src.core.kill import check, KillSwitchActiveError, is_kill_switch_active
+from src.core.kill import check, KillSwitchActiveError
 from src.core.logger import get_logger
 
 log = get_logger(__name__)
