@@ -3,7 +3,8 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Dict, List, Any, Set
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
+import asyncio
 
 from src.core.logger import get_logger
 
@@ -23,6 +24,7 @@ class State(BaseModel):
     # --- IDEMPOTENCY FIX ---
     pending_transfers: Set[str] = Field(default_factory=set)
     cycle_counter: int = 0
+    _lock: asyncio.Lock = PrivateAttr(default_factory=asyncio.Lock)
 
     class Config:
         arbitrary_types_allowed = True

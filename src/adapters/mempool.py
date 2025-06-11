@@ -10,17 +10,20 @@ from src.core.logger import get_logger
 
 log = get_logger(__name__)
 
-MEMPOOL_WSS_URL = settings.MEMPOOL_WSS_URL.get_secret_value()
+MEMPOOL_WSS_URLS = [u.strip() for u in settings.MEMPOOL_WSS_URL.get_secret_value().split(',')]
 
 class MempoolAdapter:
-    def __init__(self, wss_url: str = MEMPOOL_WSS_URL):
-        self.wss_url = wss_url
+    def __init__(self, wss_urls: list[str] = MEMPOOL_WSS_URLS):
+        self.wss_urls = wss_urls
+        self.idx = 0
         self.connection = None
+        self.stall_timeout = 0.5  # 500ms stall detection
 
     async def connect(self):
-        log.info("MEMPOOL_ADAPTER_CONNECTING", url=self.wss_url)
+        url = self.wss_urls[self.idx]
+        log.info("MEMPOOL_ADAPTER_CONNECTING", url=url)
         try:
-            self.connection = await websockets.connect(self.wss_url)
+            self.connection = await websockets.connect(url)
             await self.connection.send(json.dumps({
                 "id": 1, "method": "eth_subscribe", "params": ["newPendingTransactions"]
             }))
@@ -38,14 +41,19 @@ class MempoolAdapter:
                     await self.connect()
                 except Exception:
                     await asyncio.sleep(5)
+                    self.idx = (self.idx + 1) % len(self.wss_urls)
                     continue
-            
+
             try:
-                message = await self.connection.recv()
+                message = await asyncio.wait_for(self.connection.recv(), timeout=self.stall_timeout)
                 data = json.loads(message)
                 tx = data.get("params", {}).get("result", {})
                 if tx and isinstance(tx, dict):
                     yield tx
+            except asyncio.TimeoutError:
+                log.warning("MEMPOOL_FEED_STALLED", url=self.wss_urls[self.idx])
+                self.idx = (self.idx + 1) % len(self.wss_urls)
+                self.connection = None
             except ConnectionClosed:
                 log.warning("MEMPOOL_CONNECTION_CLOSED_RECONNECTING")
                 self.connection = None

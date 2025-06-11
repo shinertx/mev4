@@ -1,5 +1,7 @@
 # /src/adapters/oracle.py
 from decimal import Decimal
+import asyncio
+import aiohttp
 from web3 import Web3
 
 from src.core.resilient_rpc import ResilientWeb3Provider # Use async provider
@@ -11,14 +13,36 @@ class OracleAdapter:
     def __init__(self):
         self.provider = ResilientWeb3Provider() # It's now async
         self.w3 = self.provider.get_primary_provider()
+        self.http = aiohttp.ClientSession()
 
     async def initialize(self):
         await self.provider.initialize()
         log.info("ASYNC_ORACLE_ADAPTER_INITIALIZED")
 
+    async def _coingecko_price(self, symbol: str) -> Decimal:
+        url = f"https://api.coingecko.com/api/v3/simple/price?ids={symbol}&vs_currencies=usd"
+        async with self.http.get(url) as resp:
+            data = await resp.json()
+            return Decimal(str(data[symbol]["usd"]))
+
+    async def _chainlink_price(self, pair: str) -> Decimal:
+        # Placeholder for on-chain Chainlink call
+        price_wei = await self.provider.call_consensus("0x0000000000000000000000000000000000000000", [], "latestRoundData")
+        return Decimal(price_wei) / Decimal(1e8)
+
+    async def _uniswap_twap(self, pair: str) -> Decimal:
+        # Placeholder for on-chain TWAP
+        price_wei = await self.provider.call_consensus("0x0000000000000000000000000000000000000000", [], "consult", pair)
+        return Decimal(price_wei) / Decimal(1e18)
+
     async def get_price(self, pair: str) -> Decimal:
-        """Fetches price from a real oracle like Chainlink."""
-        # ... logic to call a Chainlink price feed contract asynchronously ...
-        # price_wei = await self.provider.call_consensus(...)
-        # return Decimal(price_wei) / 10**8
-        return Decimal("3000.0") # Placeholder
+        coingecko, chainlink, twap = await asyncio.gather(
+            self._coingecko_price(pair),
+            self._chainlink_price(pair),
+            self._uniswap_twap(pair)
+        )
+        prices = sorted([coingecko, chainlink, twap])
+        median_price = prices[1]
+        if abs(median_price - twap) / twap > Decimal("0.01"):
+            raise ValueError("Median price deviates >1% from on-chain TWAP")
+        return median_price
