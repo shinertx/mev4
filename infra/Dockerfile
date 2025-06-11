@@ -37,6 +37,7 @@ WORKDIR /home/appuser
 
 # Copy installed dependencies from the builder stage
 COPY --from=builder /home/appuser/.local /home/appuser/.local
+RUN chown -R appuser:appuser /home/appuser
 
 # Copy the application source code
 COPY ./src ./src

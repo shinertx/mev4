@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     REDIS_URL: AnyUrl = "redis://localhost:6379/0"
     MANUAL_APPROVAL: bool = False
     CONTROL_API_TOKEN: str | None = None
+    MUTATION_TTL_SECONDS: int = 3600
 
     class Config:
         env_file = ".env"

@@ -9,7 +9,7 @@ from typing import Dict
 
 from src.core.state import State
 from src.strategies.base import AbstractStrategy
-from src.core.kill import is_kill_switch_active, check, KillSwitchActiveError
+from src.core.kill import check, KillSwitchActiveError
 from src.core.logger import get_logger, set_cycle_counter
 from src.core import drp
 from src.core.config import settings
