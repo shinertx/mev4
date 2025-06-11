@@ -30,7 +30,7 @@ class AIModelAdapter:
     """
     def __init__(self):
         self.api_key = settings.OPENAI_API_KEY.get_secret_value() if settings.OPENAI_API_KEY else None
-        self.api_url = "https://api.openai.com/v1/chat/completions"
+        self.api_url = settings.AI_MODEL_API_URL
         os.makedirs(APPROVAL_DIR, exist_ok=True)
         if not self.api_key:
             log.warning("AI_MODEL_ADAPTER_NO_API_KEY", detail="Module will be inert.")

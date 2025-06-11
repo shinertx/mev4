@@ -33,8 +33,21 @@ class DexAdapter:
 
 
     async def approve(self, token_address: str, amount_wei: int) -> str | None:
-        # ... (same as before) ...
-        pass
+        try:
+            check()
+        except KillSwitchActiveError:
+            raise TransactionKillSwitchError("DEX approval blocked by kill switch.")
+
+        token = self.w3.eth.contract(address=Web3.to_checksum_address(token_address), abi=ERC20_ABI)
+        allowance = await token.functions.allowance(self.tx_manager.address, self.router_address).call()
+        if allowance >= amount_wei:
+            log.info("DEX_APPROVAL_SKIPPED", token=token_address, amount=amount_wei)
+            return None
+
+        tx_params = token.functions.approve(self.router_address, amount_wei).build_transaction({
+            'from': self.tx_manager.address
+        })
+        return await self.tx_manager.build_and_send_transaction(tx_params)
 
     async def swap(self, amount_in_wei: int, path: list, slippage_tolerance: Decimal = Decimal("0.005")) -> str:
         try:
