@@ -14,6 +14,10 @@ import os
 TRADES_EXECUTED = Counter("mev_og_trades_executed_total", "Total number of trades executed", ["strategy"])
 SNAPSHOTS_TAKEN = Counter("mev_og_snapshots_taken_total", "Total number of DRP snapshots taken")
 ERRORS_LOGGED = Counter("mev_og_errors_logged_total", "Total number of errors logged", ["level"])
+KILL_TRIGGERED = Counter("kill_triggered_total", "Times the kill switch has halted execution")
+MUTATION_ATTEMPT = Counter("mutation_attempt_total", "Total mutation attempts")
+MUTATION_APPROVED = Counter("mutation_approved_total", "Total mutations approved")
+MUTATION_REVERTED = Counter("mutation_reverted_total", "Total mutations reverted via DRP")
 
 SIGNING_KEY = (settings.LOG_SIGNING_KEY.get_secret_value().encode()
                if settings.LOG_SIGNING_KEY else b"insecure")

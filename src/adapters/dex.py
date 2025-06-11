@@ -5,7 +5,7 @@ from web3 import Web3
 from web3.contract.async_contract import AsyncContract
 
 from src.core.tx import TransactionManager, TransactionKillSwitchError
-from src.core.kill import is_kill_switch_active
+from src.core.kill import check, KillSwitchActiveError
 from src.core.logger import get_logger
 from src.core.gas_estimator import GasEstimator # NEW: for dynamic fees
 from src.abis.erc20 import ERC20_ABI # NEW: real ABIs
@@ -24,8 +24,8 @@ class DexAdapter:
         )
 
     async def get_quote(self, amount_in_wei: int, path: list) -> list:
-        # ... (same as before) ...
         try:
+            check()
             return await self.router.functions.getAmountsOut(amount_in_wei, path).call()
         except Exception as e:
             log.error("ASYNC_DEX_QUOTE_FAILED", path=path, error=str(e))
@@ -37,7 +37,9 @@ class DexAdapter:
         pass
 
     async def swap(self, amount_in_wei: int, path: list, slippage_tolerance: Decimal = Decimal("0.005")) -> str:
-        if is_kill_switch_active():
+        try:
+            check()
+        except KillSwitchActiveError:
             raise TransactionKillSwitchError("DEX action blocked by kill switch.")
         
         deadline = int(time.time()) + 120

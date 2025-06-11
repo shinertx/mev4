@@ -8,7 +8,7 @@ from src.adapters.dex import DexAdapter
 from src.adapters.oracle import OracleAdapter # Fixed
 from src.core.logger import get_logger
 from src.core.drp import save_snapshot, load_snapshot # Fixed
-from src.core.kill import is_kill_switch_active
+from src.core.kill import check, KillSwitchActiveError
 from src.abis.uniswap_v2 import UNISWAP_V2_ROUTER_ABI
 
 log = get_logger(__name__)
@@ -23,7 +23,9 @@ class SandwichStrategy:
         self.uniswap_contract = self.w3.eth.contract(abi=UNISWAP_V2_ROUTER_ABI)
 
     async def process_transaction(self, tx: Dict[str, Any], initial_state: State):
-        if is_kill_switch_active():
+        try:
+            check()
+        except KillSwitchActiveError:
             log.critical("SANDWICH_ABORTED_BY_KILL_SWITCH", tx_hash=tx.get("hash"))
             return initial_state
 

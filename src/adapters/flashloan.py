@@ -9,7 +9,7 @@ from web3 import Web3
 from web3.contract import Contract
 
 from src.core.tx import TransactionManager, TransactionKillSwitchError
-from src.core.kill import is_kill_switch_active
+from src.core.kill import check, KillSwitchActiveError
 from src.core.logger import get_logger
 
 log = get_logger(__name__)
@@ -39,7 +39,9 @@ class FlashloanAdapter:
 
     def _check_kill_switch(self):
         """BIBLE ENFORCEMENT: Safety check before initiating a massive capital movement."""
-        if is_kill_switch_active():
+        try:
+            check()
+        except KillSwitchActiveError:
             raise TransactionKillSwitchError("Flash loan blocked by system kill switch.")
 
     def initiate_flashloan(

@@ -5,7 +5,7 @@ import websockets
 from websockets.exceptions import ConnectionClosed
 
 from src.core.config import settings
-from src.core.kill import is_kill_switch_active
+from src.core.kill import check, KillSwitchActiveError, is_kill_switch_active
 from src.core.logger import get_logger
 
 log = get_logger(__name__)
@@ -20,6 +20,7 @@ class MempoolAdapter:
         self.stall_timeout = 0.5  # 500ms stall detection
 
     async def connect(self):
+        check()
         url = self.wss_urls[self.idx]
         log.info("MEMPOOL_ADAPTER_CONNECTING", url=url)
         try:
@@ -36,6 +37,10 @@ class MempoolAdapter:
 
     async def stream_transactions(self):
         while not is_kill_switch_active():
+            try:
+                check()
+            except KillSwitchActiveError:
+                break
             if not self.connection or self.connection.closed:
                 try:
                     await self.connect()
