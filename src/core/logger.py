@@ -1,40 +1,36 @@
 # /src/core/logger.py
-# Aligns with PROJECT_BIBLE.md: Section 3
-# - Structured logging for every trade, state change, kill, error.
-# - Emits machine-readable logs with timestamps.
-
 import logging
-import sys
 import structlog
+import sentry_sdk
+from prometheus_client import Counter
 from src.core.config import settings
 
-# --- Structlog Configuration ---
-# This setup ensures that logs are structured as JSON for production environments
-# and are human-readable in local development.
+# --- Prometheus Metrics ---
+TRADES_EXECUTED = Counter("mev_og_trades_executed_total", "Total number of trades executed", ["strategy"])
+SNAPSHOTS_TAKEN = Counter("mev_og_snapshots_taken_total", "Total number of DRP snapshots taken")
+ERRORS_LOGGED = Counter("mev_og_errors_logged_total", "Total number of errors logged", ["level"])
 
-# Mute noisy loggers from libraries
-logging.getLogger("web3").setLevel(logging.INFO)
-logging.getLogger("urllib3").setLevel(logging.INFO)
+def configure_logging():
+    if settings.SENTRY_DSN:
+        sentry_sdk.init(dsn=settings.SENTRY_DSN.get_secret_value(), traces_sample_rate=1.0)
 
-structlog.configure(
-    processors=[
-        structlog.contextvars.merge_contextvars,
-        structlog.processors.add_log_level,
-        structlog.processors.StackInfoRenderer(),
-        structlog.dev.set_exc_info,
-        structlog.processors.TimeStamper(fmt="iso"),
-        structlog.processors.JSONRenderer(),
-    ],
-    wrapper_class=structlog.make_filtering_bound_logger(logging.getLevelName(settings.LOG_LEVEL)),
-    context_class=dict,
-    logger_factory=structlog.PrintLoggerFactory(),
-    cache_logger_on_first_use=True,
-)
+    structlog.configure(
+        processors=[
+            structlog.contextvars.merge_contextvars,
+            structlog.processors.add_log_level,
+            structlog.processors.StackInfoRenderer(),
+            structlog.dev.set_exc_info,
+            structlog.processors.TimeStamper(fmt="iso", utc=True),
+            structlog.processors.JSONRenderer(), # Production-ready JSON logs
+        ],
+        wrapper_class=structlog.make_filtering_bound_logger(logging.getLevelName(settings.LOG_LEVEL)),
+        context_class=dict,
+        logger_factory=structlog.PrintLoggerFactory(),
+        cache_logger_on_first_use=True,
+    )
 
-# A simple function to get a logger instance for any module
 def get_logger(name: str):
-    """Returns a configured structlog logger instance."""
     return structlog.get_logger(name)
 
-# Example of a root logger for system-level events
+configure_logging()
 log = get_logger("MEV-OG.System")
