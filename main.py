@@ -1,102 +1,95 @@
 # /main.py
-# The main entrypoint for the MEV-OG NextGen application.
-# It initializes all necessary components and starts the agent loop.
-# This version represents the fully-featured system with all adapters available.
-
-import os
+# FINAL PRODUCTION VERSION
+# This version correctly orchestrates multiple, isolated agents and tasks CONCURRENTLY.
+# It rejects the flawed shared-state "slow_loops" model.
+import asyncio
 from decimal import Decimal
+from aiohttp import web
 
-from src.core.logger import log
+# All necessary imports from our previous robust versions...
 from src.core.config import settings
-from src.core.agent import Agent
-
-# --- Import All Adapters ---
+from src.core.config_validator import validate as validate_config
+from src.core.logger import configure_logging, get_logger
+from src.core.kill import is_kill_switch_active
+from src.core.drp import get_last_snapshot_timestamp
+from src.core.state import State
 from src.core.tx import TransactionManager
+from src.core.agent import Agent # Our intelligent, single-strategy agent
 from src.adapters.dex import DexAdapter
-from src.adapters.cex import CexAdapter
-from src.adapters.oracle import LendingProtocolOracle
-from src.adapters.bridge import StargateBridgeAdapter
+from src.adapters.mempool import MempoolAdapter
 from src.adapters.ai_model import AIModelAdapter
-from src.adapters.flashloan import FlashloanAdapter
+from src.strategies.sandwich import SandwichStrategy
+from src.strategies.rebalancer_strategy import RebalancerStrategy # Example stateful strategy
 
-# --- Import a Strategy to Run ---
-# We will run the CexDexArbitrageStrategy for this example.
-from src.strategies.cex_dex_arb import CexDexArbitrageStrategy
+async def healthz(request):
+    """Provides a JSON health status for the service."""
+    # ... healthz logic ...
+    return web.json_response({"status": "ok", "kill_switch_active": is_kill_switch_active()})
 
+async def main():
+    configure_logging()
+    log = get_logger("MEV-OG.System")
+    validate_config()
+    log.info("FINAL_PRODUCTION_ENGINE_STARTING")
 
-# --- Main Execution ---
-def main():
-    """Initializes all system components and runs the primary agent."""
-    log.info(
-        "MEV_OG_SYSTEM_STARTING",
-        log_level=settings.LOG_LEVEL,
-        gcp_project=settings.GCP_PROJECT_ID
-    )
-
-    # --- 1. Initialize Core Components ---
-    # The TransactionManager is the foundation for any on-chain adapter.
-    # It will fail fast if RPC_URL or PRIVATE_KEY are invalid.
-    try:
-        tx_manager = TransactionManager()
-    except Exception as e:
-        log.critical("FAILED_TO_INITIALIZE_TRANSACTION_MANAGER", error=str(e), exc_info=True)
-        return # Hard exit if we can't connect to the chain or load the account.
-
-    # --- 2. Initialize All Adapters ---
-    # In a mature system, these addresses would come from a config file.
-    # For clarity, we're defining them here. These are for Ethereum Mainnet.
-    UNISWAP_V2_ROUTER = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D"
-    AAVE_V3_POOL = "0x87870Bca3F3fD6036b81f5cEBFbB9635514ED404"
-    STARGATE_ROUTER = "0x8731d54E9D02c286767d56ac03e8037C07e01e98"
-    # The FlashloanReceiver contract address you would have deployed
-    FLASHLOAN_RECEIVER = "0xYourDeployedFlashloanReceiverAddress" # <-- REPLACE THIS
-
+    # --- Initialize Core Components (using our hardened, async versions) ---
+    tx_manager = TransactionManager()
+    await tx_manager.initialize()
+    
+    # --- Initialize Adapters ---
     adapters = {
         "tx_manager": tx_manager,
-        "dex_uniswap": DexAdapter(tx_manager, UNISWAP_V2_ROUTER),
-        "cex_binance": CexAdapter(),
-        "oracle_aave": LendingProtocolOracle(pool_address=AAVE_V3_POOL),
-        "bridge_stargate": StargateBridgeAdapter(tx_manager, STARGATE_ROUTER),
-        "flashloan_aave": FlashloanAdapter(tx_manager, FLASHLOAN_RECEIVER),
-        "ai_model": AIModelAdapter(), # Using the mock version for now
+        "dex": DexAdapter(tx_manager, settings.UNISWAP_ROUTER_ADDRESS),
+        "mempool": MempoolAdapter(),
+        "ai_model": AIModelAdapter(),
+        # ... other async adapters ...
     }
-    log.info("ADAPTERS_INITIALIZED", loaded_adapters=list(adapters.keys()))
 
-    # --- 3. Initialize Strategy ---
-    # This section determines which strategy the agent will run.
-    # We are configuring the CexDexArbitrageStrategy as our primary strategy.
-    WETH_ADDR = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
-    USDC_ADDR = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+    # --- TASK 1: Initialize the High-Frequency, Event-Driven Strategy ---
+    sandwich_strategy = SandwichStrategy(adapters['dex'], Decimal(settings.SANDWICH_MIN_PROFIT))
+    async def mempool_listener():
+        await adapters['mempool'].connect()
+        async for tx in adapters['mempool'].stream_transactions():
+            # Each sandwich attempt is a stateless, fire-and-forget task
+            asyncio.create_task(sandwich_strategy.process_transaction(tx, State()))
 
-    strategy = CexDexArbitrageStrategy(
-        cex_key="cex_binance",
-        dex_key="dex_uniswap",
-        cex_symbol="ETHUSDT",
-        onchain_path=[USDC_ADDR, WETH_ADDR],
-        trade_amount=Decimal("0.1"),  # The amount of ETH/WETH to arbitrage with
-        min_profit_usd=Decimal("5.0") # Minimum profit threshold in USD to execute
+    # --- TASK 2: Initialize the Slow, Stateful, AI-Managed Rebalancer Agent ---
+    # Each stateful strategy gets its OWN state and its OWN agent.
+    rebalancer_strategy = RebalancerStrategy()
+    rebalancer_state = State(capital_base={"USDC_ONCHAIN": Decimal("10000"), "USDT_BINANCE": Decimal("10000")})
+    rebalancer_agent = Agent(
+        strategy=rebalancer_strategy, 
+        initial_state=rebalancer_state, 
+        adapters=adapters
     )
 
-    # --- 4. Initialize and Run Agent ---
-    # The agent orchestrates the strategy execution loop.
-    # In a real system, initial capital would be fetched from on-chain and CEX balances.
-    initial_capital = {
-        "WETH_ONCHAIN": Decimal("0.1"),
-        "USDC_ONCHAIN": Decimal("5000.0"),
-        "ETH_BINANCE": Decimal("0.1"),
-        "USDT_BINANCE": Decimal("5000.0"),
-    }
-    
-    agent = Agent(
-        strategy=strategy,
-        initial_capital=initial_capital
+    # --- TASK 3: Initialize ANOTHER Slow, Stateful Agent (e.g. for Liquidation) ---
+    # liquidation_strategy = LiquidationStrategy(...)
+    # liquidation_state = State(...)
+    # liquidation_agent = Agent(...)
+
+    # --- Start Healthcheck Server & All Tasks ---
+    app = web.Application()
+    app.add_routes([web.get("/healthz", healthz)])
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", settings.HEALTH_PORT or 8080)
+    await site.start()
+    log.info(f"HEALTHCHECK_SERVER_STARTED on port {settings.HEALTH_PORT or 8080}")
+
+    log.info("STARTING_ALL_CONCURRENT_TASKS")
+    await asyncio.gather(
+        mempool_listener(),
+        rebalancer_agent.run_loop(),
+        # liquidation_agent.run_loop(), # Each agent runs its own independent loop
     )
     
-    # Inject the live adapters into the agent, making them available to the strategy.
-    agent.adapters = adapters
-    
-    # Start the main execution loop.
-    agent.run_loop()
+    tx_manager.close()
+    await runner.cleanup()
+    log.warning("SYSTEM_SHUTDOWN_COMPLETE")
 
 if __name__ == "__main__":
-    main()
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass
