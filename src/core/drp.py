@@ -13,9 +13,10 @@ from src.core.config import settings
 from src.core.kill import get_gcs_client
 
 log = get_logger(__name__)
-LOCAL_DIR = Path(settings.SESSION_DIR) / "drp_snapshots"
+LOCAL_DIR = Path("./.drp_snapshots")
 LAST_FILE = LOCAL_DIR / "last_snapshot.ts"
-GCS_BUCKET = f"{settings.GCP_PROJECT_ID}-mev-og-state" if settings.GCP_PROJECT_ID else None
+USE_GCS = bool(os.getenv("GOOGLE_APPLICATION_CREDENTIALS"))
+GCS_BUCKET = f"{settings.GCP_PROJECT_ID}-mev-og-state" if USE_GCS and settings.GCP_PROJECT_ID else None
 
 async def save_snapshot(state: State) -> str:
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -23,7 +24,7 @@ async def save_snapshot(state: State) -> str:
     payload = state.model_dump_json(indent=2)
 
     # Upload to GCS or write locally
-    if GCS_BUCKET:
+    if USE_GCS and GCS_BUCKET:
         client = get_gcs_client()
         blob = client.bucket(GCS_BUCKET).blob(f"drp/{filename}")
         try:
@@ -49,7 +50,7 @@ async def save_snapshot(state: State) -> str:
     return path
 
 async def load_snapshot(path: str) -> State:
-    if path.startswith("gs://"):
+    if USE_GCS and path.startswith("gs://"):
         client = get_gcs_client()
         bucket, _, blob_name = path[5:].partition("/")
         blob = client.bucket(bucket).blob(blob_name)

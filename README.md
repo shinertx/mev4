@@ -113,6 +113,10 @@ chmod +x deploy.sh
 ./deploy.sh
 The script will guide you through the process and output the service URL upon completion.
 
+### GCP Deployment Checklist
+* Set `GOOGLE_APPLICATION_CREDENTIALS` to the path of your service account key file.
+* Grant the service account `roles/storage.admin` on the DRP snapshot bucket.
+
 6. Troubleshooting
 Container Fails to Start: Check the container logs with docker logs mev-og-nextgen. The most common cause is a missing or invalid variable in your .env file.
 Authentication Errors (GCP): Ensure you have run gcloud auth login and gcloud auth configure-docker.
