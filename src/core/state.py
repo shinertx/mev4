@@ -22,6 +22,7 @@ class State(BaseModel):
     
     # --- IDEMPOTENCY FIX ---
     pending_transfers: Set[str] = Field(default_factory=set)
+    cycle_counter: int = 0
 
     class Config:
         arbitrary_types_allowed = True
@@ -53,3 +54,18 @@ class State(BaseModel):
         """Removes a transfer ID once it has been resolved."""
         log.info("PENDING_TRANSFER_REMOVED", transfer_id=transfer_id, session_id=str(self.session_id))
         return self.copy(update={"pending_transfers": self.pending_transfers - {transfer_id}})
+
+    def mark_pending(self, tx_ids: List[str]) -> 'State':
+        log.info("PENDING_MARKED", tx_ids=tx_ids, session_id=str(self.session_id))
+        return self.copy(update={"pending_transfers": self.pending_transfers.union(set(tx_ids))})
+
+    def clear_pending(self, tx_ids: List[str]) -> 'State':
+        log.info("PENDING_CLEARED", tx_ids=tx_ids, session_id=str(self.session_id))
+        return self.copy(update={"pending_transfers": self.pending_transfers.difference(set(tx_ids))})
+
+    def to_dict(self) -> Dict[str, Any]:
+        return self.model_dump()
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'State':
+        return cls.model_validate(data)

@@ -2,6 +2,7 @@
 # FINAL VERSION: Full async, uses resilient provider and durable nonce manager.
 import asyncio
 from typing import Dict, Any
+import redis
 
 from src.core.config import settings
 from src.core.kill import is_kill_switch_active
@@ -22,6 +23,7 @@ class TransactionManager:
         self.account = self.provider.account
         self.address = self.provider.address
         self.nonce_manager = NonceManager(self.w3, self.address)
+        self.redis = redis.Redis.from_url(settings.REDIS_URL)
         self.is_initialized = False
 
     async def initialize(self):
@@ -42,37 +44,39 @@ class TransactionManager:
             log.critical("TRANSACTION_BLOCKED_BY_KILL_SWITCH", params=tx_params)
             raise TransactionKillSwitchError("Kill switch is active. Halting transaction.")
         
-        current_nonce = await self.nonce_manager.get_nonce()
-        try:
-            full_tx_params = {
-                'from': self.address,
-                'nonce': current_nonce,
-                'chainId': self.provider.chain_id,
-                **tx_params
-            }
-            
-            # Estimate gas if not provided
-            if 'gas' not in full_tx_params:
-                full_tx_params['gas'] = await self.w3.eth.estimate_gas(full_tx_params)
+        lock = self.redis.lock(f"nonce_lock:{self.address}", timeout=10)
+        with lock:
+            current_nonce = await self.nonce_manager.get_nonce()
+            try:
+                full_tx_params = {
+                    'from': self.address,
+                    'nonce': current_nonce,
+                    'chainId': self.provider.chain_id,
+                    **tx_params
+                }
 
-            # Set default EIP-1559 fees if not provided
-            if 'maxFeePerGas' not in full_tx_params:
-                gas_price = await self.w3.eth.gas_price
-                full_tx_params['maxFeePerGas'] = gas_price * 2
-                full_tx_params['maxPriorityFeePerGas'] = await self.w3.eth.max_priority_fee
+                # Estimate gas if not provided
+                if 'gas' not in full_tx_params:
+                    full_tx_params['gas'] = await self.w3.eth.estimate_gas(full_tx_params)
 
-            signed_tx = self.w3.eth.account.sign_transaction(full_tx_params, self.account.key)
-            tx_hash = await self.w3.eth.send_raw_transaction(signed_tx.rawTransaction)
-            
-            # Increment durable nonce ONLY on successful broadcast
-            await self.nonce_manager.increment()
-            
-            log.info("ASYNC_TRANSACTION_BROADCASTED", tx_hash=tx_hash.hex(), nonce=current_nonce)
-            return tx_hash.hex()
-        except Exception as e:
-            log.error("ASYNC_TRANSACTION_FAILURE", nonce=current_nonce, error=str(e), exc_info=True)
-            # A sophisticated system might try to re-sync the nonce here on specific errors.
-            raise
+                # Set default EIP-1559 fees if not provided
+                if 'maxFeePerGas' not in full_tx_params:
+                    gas_price = await self.w3.eth.gas_price
+                    full_tx_params['maxFeePerGas'] = gas_price * 2
+                    full_tx_params['maxPriorityFeePerGas'] = await self.w3.eth.max_priority_fee
+
+                signed_tx = self.w3.eth.account.sign_transaction(full_tx_params, self.account.key)
+                tx_hash = await self.w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+
+                # Increment durable nonce ONLY on successful broadcast
+                await self.nonce_manager.increment()
+
+                log.info("ASYNC_TRANSACTION_BROADCASTED", tx_hash=tx_hash.hex(), nonce=current_nonce)
+                return tx_hash.hex()
+            except Exception as e:
+                log.error("ASYNC_TRANSACTION_FAILURE", nonce=current_nonce, error=str(e), exc_info=True)
+                # A sophisticated system might try to re-sync the nonce here on specific errors.
+                raise
 
     def close(self):
         """Closes resources like the nonce file lock."""

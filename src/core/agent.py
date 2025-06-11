@@ -3,12 +3,16 @@
 # Manages the full mutation lifecycle: request, check for approval, and apply.
 
 import asyncio
+import json
+import redis
 from typing import Dict
 
 from src.core.state import State
 from src.strategies.base import AbstractStrategy
 from src.core.kill import is_kill_switch_active
-from src.core.logger import get_logger
+from src.core.logger import get_logger, set_cycle_counter
+from src.core import drp
+from src.core.config import settings
 
 log = get_logger(__name__)
 
@@ -19,7 +23,16 @@ class Agent:
     """
     def __init__(self, strategy: AbstractStrategy, initial_state: State, adapters: dict):
         self.strategy = strategy
-        self.state = initial_state
+        self.redis = redis.Redis.from_url(settings.REDIS_URL)
+        try:
+            saved = self.redis.get(f"state:{initial_state.session_id}")
+            if saved:
+                self.state = State.from_dict(json.loads(saved))
+            else:
+                self.state = initial_state
+        except Exception as e:
+            log.error("STATE_RESTORE_FAILED", error=str(e))
+            self.state = initial_state
         self.adapters = adapters
         # Get a unique a name for logging and mutation management
         self.strategy_name = getattr(strategy, 'strategy_name', type(strategy).__name__)
@@ -29,19 +42,50 @@ class Agent:
         self.mutation_request_interval = 3600 # Request new params every hour
         self.last_mutation_request_time = 0
 
+    async def _two_phase_commit(self, trades: list):
+        tx_manager = self.adapters.get("tx_manager")
+        if not tx_manager or not trades:
+            return
+        txs = tx_manager.build_bundle(self.state, trades)
+        tx_ids = [tx.get("id") for tx in txs]
+        self.state = self.state.mark_pending(tx_ids)
+        try:
+            for tx in txs:
+                await tx_manager.send(tx)
+            self.state = self.state.clear_pending(tx_ids)
+        except Exception:
+            self.state = self.state.clear_pending(tx_ids)
+            raise
+
     async def run_loop(self):
         """The main async execution loop for a stateful agent."""
         log.info("STATEFUL_AGENT_STARTING_LOOP", strategy=self.strategy_name)
 
         while not is_kill_switch_active():
             try:
+                # increment cycle counter and bind to logs
+                self.state = self.state.copy(update={"cycle_counter": self.state.cycle_counter + 1})
+                cycle_id = self.state.cycle_counter
+                set_cycle_counter(cycle_id)
+
                 # 1. Check for and apply any approved mutations first
                 mutated = await self.strategy.mutate(self.adapters)
                 if mutated:
                     log.warning("AGENT_APPLIED_APPROVED_MUTATION", strategy=self.strategy_name)
-            
-                # 2. Run the strategy's core logic
-                self.state = await self.strategy.run(self.state, self.adapters, {})
+
+                pre_snapshot = await drp.save_snapshot(self.state)
+                try:
+                    result = await self.strategy.run(self.state, self.adapters, {})
+                    if isinstance(result, tuple):
+                        self.state, trades = result
+                        await self._two_phase_commit(trades)
+                    else:
+                        self.state = result
+                    await drp.save_snapshot(self.state)
+                    self.redis.set(f"state:{self.state.session_id}", json.dumps(self.state.to_dict()))
+                except Exception:
+                    self.state = await drp.load_snapshot(pre_snapshot)
+                    raise
 
                 # 3. Periodically request a new mutation from the LLM
                 now = asyncio.get_event_loop().time()
