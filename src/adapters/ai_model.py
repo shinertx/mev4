@@ -1,55 +1,47 @@
 # /src/adapters/ai_model.py
-# Aligns with PROJECT_BIBLE.md: Section 3
-# - Implements the interface for AI-driven parameter mutation.
-# - Provides a mock implementation for safe, initial testing.
-
-from decimal import Decimal
-from typing import Dict, Any
-
+import os
+import json
+from pydantic import BaseModel, ValidationError
+from src.core.config import settings
 from src.core.logger import get_logger
 
 log = get_logger(__name__)
+APPROVAL_DIR = os.path.join(settings.SESSION_DIR, "mutation_approvals")
+
+class MutationRequest(BaseModel):
+    """Schema for validating mutation suggestions."""
+    trade_amount: str
+    min_profit_usd: str
 
 class AIModelAdapter:
-    """
-    An adapter to an external AI/ML model that suggests new parameters for strategies.
-    This mock version returns predefined suggestions for testing the mutation workflow.
-    """
     def __init__(self):
-        log.info("AI_MODEL_ADAPTER_INITIALIZED", implementation="Mock")
-        self.suggestion_queue = []
+        os.makedirs(APPROVAL_DIR, exist_ok=True)
+        log.info("HARDENED_AI_ADAPTER_INITIALIZED")
 
-    def queue_suggestion(self, strategy_name: str, new_params: Dict[str, Any]):
-        """Pre-load a suggestion for the mock adapter to provide."""
-        self.suggestion_queue.append({"strategy": strategy_name, "params": new_params})
+    def request_mutation(self, strategy_name: str, new_params: dict):
+        """Writes a potential mutation to a file for external approval."""
+        try:
+            # 1. Validate the schema
+            MutationRequest.model_validate(new_params)
+            
+            # 2. Write to a pending file
+            filepath = os.path.join(APPROVAL_DIR, f"{strategy_name}.pending.json")
+            with open(filepath, "w") as f:
+                json.dump(new_params, f)
+            log.warning("MUTATION_REQUESTED_AWAITING_APPROVAL", strategy=strategy_name, params=new_params)
+        except ValidationError as e:
+            log.error("INVALID_MUTATION_SUGGESTION", error=str(e))
 
-    def get_parameter_suggestion(self, strategy_name: str, current_params: Dict[str, Any]) -> Dict[str, Any] | None:
-        """
-        Fetches a new set of parameters for a given strategy.
-        In a real implementation, this would involve calling a model endpoint with
-        the strategy's current parameters and performance metrics.
+    def get_approved_mutation(self, strategy_name: str) -> dict | None:
+        """Checks for an approved mutation file."""
+        pending_path = os.path.join(APPROVAL_DIR, f"{strategy_name}.pending.json")
+        approved_path = os.path.join(APPROVAL_DIR, f"{strategy_name}.approved.json")
 
-        Args:
-            strategy_name: The name of the strategy requesting a mutation.
-            current_params: The current parameters of the strategy instance.
-
-        Returns:
-            A dictionary of new parameters, or None if no suggestion is available.
-        """
-        log.debug(
-            "AI_MODEL_QUERYING_FOR_SUGGESTION",
-            strategy=strategy_name,
-            current_params=current_params
-        )
-        
-        if not self.suggestion_queue:
-            log.info("AI_MODEL_NO_SUGGESTION_AVAILABLE")
-            return None
-
-        # Return the next suggestion in the queue for the matching strategy
-        for i, suggestion in enumerate(self.suggestion_queue):
-            if suggestion["strategy"] == strategy_name:
-                log.info("AI_MODEL_SUGGESTION_FOUND", new_params=suggestion["params"])
-                return self.suggestion_queue.pop(i)["params"]
-        
+        # An external process (or operator) renames .pending. to .approved.
+        if os.path.exists(approved_path):
+            with open(approved_path, "r") as f:
+                params = json.load(f)
+            os.remove(approved_path) # Consume the approval
+            log.info("APPROVED_MUTATION_FOUND_AND_CONSUMED", strategy=strategy_name, params=params)
+            return params
         return None
