@@ -5,7 +5,7 @@ from typing import Dict, Any
 import redis
 
 from src.core.config import settings
-from src.core.kill import is_kill_switch_active
+from src.core.kill import check, KillSwitchActiveError
 from src.core.logger import get_logger
 from src.core.resilient_rpc import ResilientWeb3Provider
 from src.core.nonce_manager import NonceManager
@@ -40,7 +40,9 @@ class TransactionManager:
 
     async def build_and_send_transaction(self, tx_params: Dict[str, Any]) -> str:
         """Builds, signs, and sends a transaction with durable nonce management."""
-        if is_kill_switch_active():
+        try:
+            check()
+        except KillSwitchActiveError:
             log.critical("TRANSACTION_BLOCKED_BY_KILL_SWITCH", params=tx_params)
             raise TransactionKillSwitchError("Kill switch is active. Halting transaction.")
         

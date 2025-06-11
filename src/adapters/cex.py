@@ -9,6 +9,7 @@ import aiohttp
 
 from src.core.config import settings
 from src.core.logger import get_logger
+from src.core.kill import check, KillSwitchActiveError
 from src.core.decorators import retriable_network_call
 
 log = get_logger(__name__)
@@ -17,11 +18,13 @@ class CexAdapter:
     BASE_URL = "https://api.binance.com"
     
     async def _send_signed_request(self, method: str, endpoint: str, params: dict = None) -> dict:
+        check()
         # ... logic converted to use aiohttp.ClientSession ...
         pass
 
     @retriable_network_call
     async def get_transfer_status(self, transfer_id: str, type: str, max_wait_s: int = 300, poll_interval: int = 15) -> str:
+        check()
         # ... logic remains the same but uses async _send_signed_request and asyncio.sleep ...
         pass
     

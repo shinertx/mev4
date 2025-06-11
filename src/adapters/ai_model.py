@@ -8,6 +8,7 @@ from pydantic import BaseModel, ValidationError
 
 from src.core.config import settings
 from src.core.logger import get_logger
+from src.core.kill import check, KillSwitchActiveError
 
 log = get_logger(__name__)
 # Use the session directory defined in config for durability
@@ -63,6 +64,7 @@ class AIModelAdapter:
         """
         if not self.api_key:
             return
+        check()
 
         prompt = self._construct_prompt(strategy_name, performance_data)
         headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
@@ -93,6 +95,7 @@ class AIModelAdapter:
 
     def get_approved_mutation(self, strategy_name: str) -> dict | None:
         """Checks for a file renamed by an operator from .pending.json to .approved.json."""
+        check()
         approved_path = os.path.join(APPROVAL_DIR, f"{strategy_name}.approved.json")
         if os.path.exists(approved_path):
             try:

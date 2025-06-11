@@ -9,7 +9,7 @@ from typing import Dict
 
 from src.core.state import State
 from src.strategies.base import AbstractStrategy
-from src.core.kill import is_kill_switch_active
+from src.core.kill import is_kill_switch_active, check, KillSwitchActiveError
 from src.core.logger import get_logger, set_cycle_counter
 from src.core import drp
 from src.core.config import settings
@@ -44,6 +44,7 @@ class Agent:
         self.last_mutation_request_time = 0
 
     async def _two_phase_commit(self, trades: list):
+        check()
         tx_manager = self.adapters.get("tx_manager")
         if not tx_manager or not trades:
             return
@@ -65,8 +66,12 @@ class Agent:
         """The main async execution loop for a stateful agent."""
         log.info("STATEFUL_AGENT_STARTING_LOOP", strategy=self.strategy_name)
 
-        while not is_kill_switch_active():
+        while True:
             try:
+                try:
+                    check()
+                except KillSwitchActiveError:
+                    break
                 # increment cycle counter and bind to logs
                 async with self.state_lock:
                     self.state = self.state.copy(update={"cycle_counter": self.state.cycle_counter + 1})
@@ -74,7 +79,8 @@ class Agent:
                 set_cycle_counter(cycle_id)
 
                 # 1. Check for and apply any approved mutations first
-                mutated = await self.strategy.mutate(self.adapters)
+                from src.core.mutation import sandboxed_mutate
+                mutated = await sandboxed_mutate(self.strategy, self.state, self.adapters)
                 if mutated:
                     log.warning("AGENT_APPLIED_APPROVED_MUTATION", strategy=self.strategy_name)
 

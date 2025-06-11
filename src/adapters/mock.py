@@ -8,7 +8,7 @@ from typing import List, Dict
 from decimal import Decimal
 
 from src.core.tx import TransactionManager, TransactionKillSwitchError
-from src.core.kill import is_kill_switch_active
+from src.core.kill import check, KillSwitchActiveError, is_kill_switch_active
 from src.core.logger import get_logger
 
 log = get_logger(__name__)
@@ -37,7 +37,9 @@ class MockTransactionManager(TransactionManager):
         Simulates building and sending a transaction.
         Checks the kill switch, logs the transaction, and returns a fake hash.
         """
-        if is_kill_switch_active():
+        try:
+            check()
+        except KillSwitchActiveError:
             log.warning("MOCK_TX_BLOCKED_BY_KILL_SWITCH", params=tx_params)
             raise TransactionKillSwitchError("Kill switch is active.")
 
@@ -72,7 +74,9 @@ class MockDexAdapter:
         log.info("MOCK_DEX_ADAPTER_INITIALIZED")
 
     def _check_kill_switch(self):
-        if is_kill_switch_active():
+        try:
+            check()
+        except KillSwitchActiveError:
             raise TransactionKillSwitchError("DEX action blocked by Mock kill switch.")
 
     def set_quote(self, path: List[str], amount_out: int):

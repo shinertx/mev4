@@ -4,7 +4,8 @@ from datetime import datetime, timezone
 from google.cloud import storage
 from google.api_core.exceptions import NotFound, GoogleAPICallError
 from src.core.config import settings
-from src.core.logger import get_logger
+from src.core.logger import get_logger, KILL_TRIGGERED
+import sentry_sdk
 
 log = get_logger(__name__)
 
@@ -12,6 +13,11 @@ IS_GCP_CONFIGURED = bool(settings.GCP_PROJECT_ID)
 GCS_BUCKET_NAME = f"{settings.GCP_PROJECT_ID}-mev-og-state" if IS_GCP_CONFIGURED else ""
 KILL_SWITCH_BLOB_NAME = "SYSTEM_KILL_SWITCH"
 LOCAL_KILL_SWITCH_FILE = ".system_kill_activated"
+KILL_SWITCH_FILE = LOCAL_KILL_SWITCH_FILE
+
+class KillSwitchActiveError(Exception):
+    """Raised when the global kill switch is engaged."""
+    pass
 
 _storage_client = None
 
@@ -56,3 +62,26 @@ def activate_kill_switch(reason: str):
     else:
         with open(LOCAL_KILL_SWITCH_FILE, "w") as f: f.write(content)
         log.critical("LOCAL_KILL_SWITCH_ACTIVATED", reason=reason)
+
+def deactivate_kill_switch():
+    client = get_gcs_client()
+    if client:
+        try:
+            bucket = client.bucket(GCS_BUCKET_NAME)
+            blob = bucket.blob(KILL_SWITCH_BLOB_NAME)
+            if blob.exists():
+                blob.delete()
+            log.critical("GCS_KILL_SWITCH_DEACTIVATED")
+        except GoogleAPICallError as e:
+            log.critical("GCS_KILL_SWITCH_DEACTIVATION_FAILED", error=str(e))
+    else:
+        if os.path.exists(LOCAL_KILL_SWITCH_FILE):
+            os.remove(LOCAL_KILL_SWITCH_FILE)
+            log.critical("LOCAL_KILL_SWITCH_DEACTIVATED")
+
+def check():
+    if is_kill_switch_active():
+        KILL_TRIGGERED.inc()
+        sentry_sdk.capture_message("Kill switch triggered")
+        log.critical("KILL_SWITCH_TRIGGERED")
+        raise KillSwitchActiveError("Kill switch active")

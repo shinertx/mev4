@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     HEALTH_PORT: int = 8080
     SESSION_DIR: str = "/tmp/mev_og_session" # For durable state files
     REDIS_URL: AnyUrl = "redis://localhost:6379/0"
+    MANUAL_APPROVAL: bool = False
+    CONTROL_API_TOKEN: str | None = None
 
     class Config:
         env_file = ".env"
