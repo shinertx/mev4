@@ -4,6 +4,7 @@ pydantic
 structlog
 tenacity
 hvac
+redis
 
 # Blockchain & Web
 web3

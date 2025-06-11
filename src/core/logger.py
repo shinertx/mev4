@@ -1,6 +1,7 @@
 # /src/core/logger.py
 import logging
 import structlog
+from structlog.contextvars import bind_contextvars
 import sentry_sdk
 from prometheus_client import Counter
 from src.core.config import settings
@@ -31,6 +32,9 @@ def configure_logging():
 
 def get_logger(name: str):
     return structlog.get_logger(name)
+
+def set_cycle_counter(counter: int):
+    bind_contextvars(cycle_counter=counter)
 
 configure_logging()
 log = get_logger("MEV-OG.System")
