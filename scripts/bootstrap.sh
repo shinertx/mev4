@@ -4,6 +4,14 @@
 
 set -e
 
+REQUIRED_VARS=(EXECUTOR_PRIVATE_KEY ETH_RPC_URL_1 MEMPOOL_WSS_URL)
+for var in "${REQUIRED_VARS[@]}"; do
+  if [[ -z "${!var}" ]]; then
+    echo "Missing required environment variable: $var" >&2
+    exit 1
+  fi
+done
+
 echo "--- MEV-OG BOOTSTRAP ---"
 
 # 1. Run Environment Validation
