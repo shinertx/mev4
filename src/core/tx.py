@@ -51,7 +51,7 @@ class TransactionManager:
                 full_tx_params = {
                     'from': self.address,
                     'nonce': current_nonce,
-                    'chainId': self.provider.chain_id,
+                    'chainId': settings.chain_id,
                     **tx_params
                 }
 

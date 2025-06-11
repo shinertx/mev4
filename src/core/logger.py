@@ -5,11 +5,27 @@ from structlog.contextvars import bind_contextvars
 import sentry_sdk
 from prometheus_client import Counter
 from src.core.config import settings
+import json
+import hmac
+import hashlib
+import os
 
 # --- Prometheus Metrics ---
 TRADES_EXECUTED = Counter("mev_og_trades_executed_total", "Total number of trades executed", ["strategy"])
 SNAPSHOTS_TAKEN = Counter("mev_og_snapshots_taken_total", "Total number of DRP snapshots taken")
 ERRORS_LOGGED = Counter("mev_og_errors_logged_total", "Total number of errors logged", ["level"])
+
+SIGNING_KEY = (settings.LOG_SIGNING_KEY.get_secret_value().encode()
+               if settings.LOG_SIGNING_KEY else b"insecure")
+AUDIT_FILE = os.path.join(settings.SESSION_DIR, "audit.log")
+
+def sign_and_append(event_dict: dict) -> dict:
+    payload = json.dumps(event_dict, sort_keys=True)
+    sig = hmac.new(SIGNING_KEY, payload.encode(), hashlib.sha256).hexdigest()
+    with open(AUDIT_FILE, "a") as f:
+        f.write(payload + "|" + sig + "\n")
+    event_dict["signature"] = sig
+    return event_dict
 
 def configure_logging():
     if settings.SENTRY_DSN:
@@ -22,6 +38,7 @@ def configure_logging():
             structlog.processors.StackInfoRenderer(),
             structlog.dev.set_exc_info,
             structlog.processors.TimeStamper(fmt="iso", utc=True),
+            sign_and_append,
             structlog.processors.JSONRenderer(), # Production-ready JSON logs
         ],
         wrapper_class=structlog.make_filtering_bound_logger(logging.getLevelName(settings.LOG_LEVEL)),

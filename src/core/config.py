@@ -1,6 +1,7 @@
 # /src/core/config.py
 import os
 from pydantic import BaseSettings, SecretStr, AnyUrl
+from typing import List
 from src.core.logger import log
 
 # This is the simplified settings loader. If using Vault, the more complex
@@ -10,10 +11,17 @@ class Settings(BaseSettings):
     EXECUTOR_PRIVATE_KEY: SecretStr
 
     # RPC & Mempool Endpoints
-    ETH_RPC_URL_1: SecretStr
+    # Deprecated ETH_RPC_URL_* in favor of rpc_urls
+    ETH_RPC_URL_1: SecretStr | None = None
     ETH_RPC_URL_2: SecretStr | None = None
     ETH_RPC_URL_3: SecretStr | None = None
+    rpc_urls: List[AnyUrl]
     MEMPOOL_WSS_URL: SecretStr
+
+    # Chain configuration
+    chain_id: int
+
+    LOG_SIGNING_KEY: SecretStr | None = None
 
     # External Service Keys
     OPENAI_API_KEY: SecretStr | None = None

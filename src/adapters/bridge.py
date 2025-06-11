@@ -1,6 +1,10 @@
 # /src/adapters/bridge.py - HARDENED with explicit destination address and native gas
 from web3 import Web3
 from web3.contract import Contract
+from merkletools import MerkleTools
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.exceptions import InvalidSignature
 
 from src.core.tx import TransactionManager, TransactionKillSwitchError
 from src.core.kill import is_kill_switch_active
@@ -15,6 +19,7 @@ class StargateBridgeAdapter:
         self.w3: Web3 = tx_manager.w3
         self.router_address = Web3.to_checksum_address(router_address)
         self.router_contract: Contract = self.w3.eth.contract(address=self.router_address, abi=STARGATE_ROUTER_ABI)
+        self.mt = MerkleTools(hash_type="keccak")
 
     def _check_kill_switch(self):
         if is_kill_switch_active():
@@ -56,4 +61,20 @@ class StargateBridgeAdapter:
             'value': native_gas_amount
         })
 
-        return self.tx_manager.build_and_send_transaction(tx_params)
+        tx_hash = self.tx_manager.build_and_send_transaction(tx_params)
+        return tx_hash
+
+    def verify_bridge_event(self, root: str, leaf: str, proof: list[str], relayer_sig: str | None = None, relayer_pubkey_pem: str | None = None) -> bool:
+        if proof:
+            if not self.mt.validate_proof(proof, leaf, root):
+                raise ValueError("Invalid Merkle proof")
+        elif relayer_sig and relayer_pubkey_pem:
+            pubkey = serialization.load_pem_public_key(relayer_pubkey_pem.encode())
+            try:
+                pubkey.verify(bytes.fromhex(relayer_sig), leaf.encode(), ec.ECDSA(hashes.SHA256()))
+            except InvalidSignature:
+                raise ValueError("Invalid relayer signature")
+        else:
+            raise ValueError("No proof or attestation provided")
+        log.info("BRIDGE_EVENT_VERIFIED", leaf=leaf)
+        return True

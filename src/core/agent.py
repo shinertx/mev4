@@ -24,6 +24,7 @@ class Agent:
     def __init__(self, strategy: AbstractStrategy, initial_state: State, adapters: dict):
         self.strategy = strategy
         self.redis = redis.Redis.from_url(settings.REDIS_URL)
+        self.state_lock = asyncio.Lock()
         try:
             saved = self.redis.get(f"state:{initial_state.session_id}")
             if saved:
@@ -48,13 +49,16 @@ class Agent:
             return
         txs = tx_manager.build_bundle(self.state, trades)
         tx_ids = [tx.get("id") for tx in txs]
-        self.state = self.state.mark_pending(tx_ids)
+        async with self.state_lock:
+            self.state = self.state.mark_pending(tx_ids)
         try:
             for tx in txs:
                 await tx_manager.send(tx)
-            self.state = self.state.clear_pending(tx_ids)
+            async with self.state_lock:
+                self.state = self.state.clear_pending(tx_ids)
         except Exception:
-            self.state = self.state.clear_pending(tx_ids)
+            async with self.state_lock:
+                self.state = self.state.clear_pending(tx_ids)
             raise
 
     async def run_loop(self):
@@ -64,8 +68,9 @@ class Agent:
         while not is_kill_switch_active():
             try:
                 # increment cycle counter and bind to logs
-                self.state = self.state.copy(update={"cycle_counter": self.state.cycle_counter + 1})
-                cycle_id = self.state.cycle_counter
+                async with self.state_lock:
+                    self.state = self.state.copy(update={"cycle_counter": self.state.cycle_counter + 1})
+                    cycle_id = self.state.cycle_counter
                 set_cycle_counter(cycle_id)
 
                 # 1. Check for and apply any approved mutations first
@@ -77,14 +82,18 @@ class Agent:
                 try:
                     result = await self.strategy.run(self.state, self.adapters, {})
                     if isinstance(result, tuple):
-                        self.state, trades = result
+                        async with self.state_lock:
+                            self.state, trades = result
                         await self._two_phase_commit(trades)
                     else:
-                        self.state = result
-                    await drp.save_snapshot(self.state)
-                    self.redis.set(f"state:{self.state.session_id}", json.dumps(self.state.to_dict()))
+                        async with self.state_lock:
+                            self.state = result
+                    async with self.state_lock:
+                        await drp.save_snapshot(self.state)
+                        self.redis.set(f"state:{self.state.session_id}", json.dumps(self.state.to_dict()))
                 except Exception:
-                    self.state = await drp.load_snapshot(pre_snapshot)
+                    async with self.state_lock:
+                        self.state = await drp.load_snapshot(pre_snapshot)
                     raise
 
                 # 3. Periodically request a new mutation from the LLM
@@ -93,7 +102,8 @@ class Agent:
                     log.info("AGENT_REQUESTING_NEW_MUTATION", strategy=self.strategy_name)
                     
                     if hasattr(self.strategy, 'get_performance_data'):
-                        performance_data = self.strategy.get_performance_data(self.state)
+                        async with self.state_lock:
+                            performance_data = self.strategy.get_performance_data(self.state)
                         await self.adapters['ai_model'].fetch_and_propose_mutation(self.strategy_name, performance_data)
                     else:
                         log.warning("STRATEGY_MISSING_GET_PERFORMANCE_DATA", strategy=self.strategy_name)
