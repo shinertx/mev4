@@ -11,3 +11,24 @@ requests            # For CEX/API communication
 google-cloud-secret-manager # For production secret management
 prometheus-client           # For exposing metrics
 sentry-sdk                  # For error reporting and performance monitoring
+
+# Core & Utilities
+python-dotenv
+pydantic
+structlog
+tenacity
+hvac
+
+# Blockchain & Web
+web3
+requests
+
+# GCP & Monitoring
+google-cloud-storage
+google-api-core
+prometheus-client
+sentry-sdk
+
+# Testing
+pytest
+toxiproxy-python-client
