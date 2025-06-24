@@ -29,5 +29,5 @@ uvicorn
 # Testing
 pytest
 
-toxiproxy-python-client @ git+https://github.com/Shopify/toxiproxy-python-client.git
+# toxiproxy-python-client @ git+https://github.com/Shopify/toxiproxy-python-client.git
 
