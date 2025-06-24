@@ -80,7 +80,8 @@ class MockDexAdapter:
             raise TransactionKillSwitchError("DEX action blocked by Mock kill switch.")
 
     def set_quote(self, path: List[str], amount_out: int):
-        self._check_kill_switch()
+        # Allow setting quotes even when the kill switch is active to enable
+        # unit-tests that prepare market conditions during a simulated halt.
         """Set a predictable output amount for a given trade path."""
         key = "-".join(path)
         self.quotes[key] = amount_out

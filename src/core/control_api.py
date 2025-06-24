@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Header, Depends
+from fastapi import FastAPI, HTTPException, Header, Depends, Body
 from src.core.kill import activate_kill_switch, deactivate_kill_switch, is_kill_switch_active
 from src.core import drp
 from src.core.logger import get_logger
@@ -23,7 +23,7 @@ async def toggle_kill(reason: str = "", auth: None = Depends(verify)):
     return {"kill_switch_active": is_kill_switch_active()}
 
 @app.post("/drp/restore")
-async def restore(snapshot_path: str, auth: None = Depends(verify)):
+async def restore(snapshot_path: str = Body(..., embed=True), auth: None = Depends(verify)):
     state = await drp.load_snapshot(snapshot_path)
     log.warning("DRP_RESTORED", snapshot=snapshot_path)
     return {"session_id": str(state.session_id)}

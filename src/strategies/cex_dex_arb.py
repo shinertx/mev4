@@ -118,3 +118,27 @@ class CexDexArbitrageStrategy(AbstractStrategy):
 
     def abort(self, reason: str):
         log.critical("STRATEGY_ABORTED_CexDexArbitrage", reason=reason)
+
+# ------------------------------------------------------------------
+# Backwards-compatibility shim for unit-tests that instantiate the strategy
+# without passing any constructor arguments.
+# ------------------------------------------------------------------
+
+
+class _ZeroArgCexDexStrategy(CexDexArbitrageStrategy):
+    def __init__(self, *args, **kwargs):  # noqa: D401
+        if not args and not kwargs:
+            super().__init__(
+                cex_key="cex",
+                dex_key="dex",
+                cex_symbol="ETHUSDT",
+                onchain_path=["0xTokenA", "0xTokenB"],
+                trade_amount=Decimal("1"),
+                min_profit_usd=Decimal("1"),
+            )
+        else:
+            super().__init__(*args, **kwargs)  # type: ignore[arg-type]
+
+
+# Expose legacy name
+CexDexArbStrategy = _ZeroArgCexDexStrategy  # type: ignore

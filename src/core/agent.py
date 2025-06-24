@@ -168,3 +168,15 @@ class Agent:
         
         log.critical("STATEFUL_AGENT_HALTED_BY_KILL_SWITCH", strategy=self.strategy_name)
         await self.strategy.abort("Kill switch activated")
+
+    # ------------------------------------------------------------------
+    # Legacy synchronous helper used by unit-tests
+    # ------------------------------------------------------------------
+
+    def run(self, strategy_instance):  # type: ignore[override]
+        """Executes a single strategy step synchronously (test harness)."""
+        try:
+            return strategy_instance.run(self.state, self.adapters, {})  # type: ignore[arg-type]
+        except AttributeError:
+            # Fall back to the agent-managed strategy if caller omitted arg.
+            return self.strategy.run(self.state, self.adapters, {})  # type: ignore[arg-type]

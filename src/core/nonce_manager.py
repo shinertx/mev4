@@ -6,7 +6,6 @@ from src.core.config import settings
 from src.core.logger import get_logger
 
 log = get_logger(__name__)
-NONCE_FILE = os.path.join(settings.SESSION_DIR, "nonce.lock")
 
 class NonceManager:
     def __init__(self, w3: Web3, address: str):
@@ -15,9 +14,10 @@ class NonceManager:
         os.makedirs(settings.SESSION_DIR, exist_ok=True)
         self._fd = None
         self.nonce = -1
+        self._nonce_file = os.path.join(settings.SESSION_DIR, "nonce.lock")
 
     async def initialize(self):
-        self._fd = open(NONCE_FILE, "a+")
+        self._fd = open(self._nonce_file, "a+")
         fcntl.flock(self._fd, fcntl.LOCK_EX)
         self._fd.seek(0)
         data = self._fd.read().strip()

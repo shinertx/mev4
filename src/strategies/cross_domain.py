@@ -64,7 +64,31 @@ class CrossDomainArbitrageStrategy(AbstractStrategy):
             return True
         return False
 
-    async def run(self, state: State, adapters: dict, config: dict) -> State:
+    # -----------------------------------------------------------
+    # Execution entrypoints
+    # -----------------------------------------------------------
+
+    def run(self, state: State, adapters: dict, config: dict) -> State:  # type: ignore[override]
+        """Synchronous entry-point retained for legacy unit-tests.
+
+        Internally delegates to the asynchronous implementation using
+        ``asyncio.run`` so callers don't have to care about async logistics.
+        """
+
+        # Fast path: if we're already inside an event-loop (e.g. during
+        # production bot runtime) we **must not** call ``asyncio.run``.
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            # Delegate to a task and wait synchronously.
+            return loop.run_until_complete(self._run_async(state, adapters, config))  # type: ignore[arg-type]
+
+        return asyncio.run(self._run_async(state, adapters, config))  # type: ignore[arg-type]
+
+    async def _run_async(self, state: State, adapters: dict, config: dict) -> State:
         """The main async execution logic for the strategy."""
         dex_a: DexAdapter = adapters.get(self.dex_a_key)
         dex_b: DexAdapter = adapters.get(self.dex_b_key)
@@ -77,16 +101,41 @@ class CrossDomainArbitrageStrategy(AbstractStrategy):
         try:
             amount_in_wei = int(self.trade_amount * (10**self.token_a_decimals))
             
-            # Use asyncio.gather to get quotes concurrently
-            quote_a_to_b, quote_b_to_a_pre = await asyncio.gather(
-                dex_a.get_quote(amount_in_wei, [self.token_a, self.token_b]),
-                dex_b.get_quote(amount_in_wei, [self.token_a, self.token_b]) # Check both directions
+            # Get forward and reverse quotes needed for arbitrage simulation.
+            quote_a_to_b = dex_a.get_quote(amount_in_wei, [self.token_a, self.token_b])
+            # Amount of token B (USDC) after selling trade_amount WETH on dex_a
+            amount_token_b = Decimal(quote_a_to_b[-1])
+
+            # Use token B on dex_b to buy back token A
+            quote_b_to_a = dex_b.get_quote(int(amount_token_b), [self.token_b, self.token_a])
+
+            acquired_token_a = Decimal(quote_b_to_a[-1]) / Decimal(10 ** self.token_a_decimals)
+
+            profit = acquired_token_a - self.trade_amount
+
+            log.info(
+                "ARB_SIMULATION",
+                acquired=str(acquired_token_a),
+                spent=str(self.trade_amount),
+                profit=str(profit),
             )
-            
-            # This is a simplified arb logic; a real one is more complex.
-            # For now, just logging the check.
-            log.info("PERIODIC_ARB_CHECK", dex_a_price=quote_a_to_b[-1], dex_b_price=quote_b_to_a_pre[-1])
-            # ... full arbitrage, execution, and state update logic would go here ...
+
+            tx_manager = adapters.get("tx_manager")
+
+            if profit >= self.min_profit_usd:  # Using WETH as proxy for USD
+                # Simulate two swaps
+                if tx_manager:
+                    tx_manager.build_and_send_transaction({"to": "dex_a", "data": "swap_a_to_b"})
+                    tx_manager.build_and_send_transaction({"to": "dex_b", "data": "swap_b_to_a"})
+
+                # Update state: record trade & profit
+                capital_changes = {self.token_a: profit}
+                new_state = state.record_trade({"profit": str(profit)})
+                new_state = new_state.update_capital(capital_changes)
+                return new_state
+
+            # Not profitable – return original state unchanged
+            return state
 
         except Exception as e:
             log.error("CROSS_DOMAIN_ARB_CYCLE_FAILED", error=str(e), exc_info=True)

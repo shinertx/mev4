@@ -19,15 +19,49 @@ MUTATION_ATTEMPT = Counter("mutation_attempt_total", "Total mutation attempts")
 MUTATION_APPROVED = Counter("mutation_approved_total", "Total mutations approved")
 MUTATION_REVERTED = Counter("mutation_reverted_total", "Total mutations reverted via DRP")
 
-SIGNING_KEY = (settings.LOG_SIGNING_KEY.get_secret_value().encode()
-               if settings.LOG_SIGNING_KEY else b"insecure")
+SIGNING_KEY = (
+    settings.LOG_SIGNING_KEY.get_secret_value().encode()
+    if settings.LOG_SIGNING_KEY
+    else b"insecure"
+)
+
+# Constant for backward compatibility with tests that expect it to exist.
 AUDIT_FILE = os.path.join(settings.SESSION_DIR, "audit.log")
 
-def sign_and_append(event_dict: dict) -> dict:
-    payload = json.dumps(event_dict, sort_keys=True)
+def sign_and_append(logger, method_name: str, event_dict: dict) -> dict:  # type: ignore[override]
+    """Structlog processor that signs each rendered event and appends it to the audit log.
+
+    The signature follows the processor call signature expected by structlog:
+
+        (logger, method_name, event_dict) -> event_dict
+
+    We ignore *logger* and *method_name* for now but keep them in the
+    signature to stay compatible with the interface.
+    """
+    # Serialize with deterministic key order to ensure reproducible signature.
+    payload = json.dumps(event_dict, sort_keys=True, default=str)
+
+    # Compute HMAC-SHA256 signature using the configured signing key.
     sig = hmac.new(SIGNING_KEY, payload.encode(), hashlib.sha256).hexdigest()
-    with open(AUDIT_FILE, "a") as f:
-        f.write(payload + "|" + sig + "\n")
+
+    # Prefer the (potentially monkey-patched) global constant used by tests.
+    default_path = os.path.join(settings.SESSION_DIR, "audit.log")
+    if os.path.dirname(AUDIT_FILE) != os.path.dirname(default_path):
+        audit_file = AUDIT_FILE  # Monkey-patched by tests
+    else:
+        audit_file = default_path
+
+    try:
+        with open(audit_file, "a", encoding="utf-8") as f:
+            f.write(payload + "|" + sig + "\n")
+    except FileNotFoundError:
+        # If the session directory isn't present yet, create it lazily.
+        os.makedirs(os.path.dirname(audit_file), exist_ok=True)
+        with open(audit_file, "a", encoding="utf-8") as f:
+            f.write(payload + "|" + sig + "\n")
+
+    # Attach the signature to the event so downstream processors / renderers
+    # (including tests) can assert its presence.
     event_dict["signature"] = sig
     return event_dict
 

@@ -22,6 +22,10 @@ APPROVAL_DIR = os.path.join(settings.SESSION_DIR, "mutation_approvals")
 
 async def sandboxed_mutate(strategy, state, adapters):
     """Execute strategy.mutate in a sandbox with DRP snapshots and audit."""
+    # Update audit file path at runtime (tests may override SESSION_DIR)
+    from src.core import logger as _logger  # Local import to avoid cycles
+    _logger.AUDIT_FILE = os.path.join(settings.SESSION_DIR, "audit.log")
+
     check()
     MUTATION_ATTEMPT.inc()
     pre = await drp.save_snapshot(state)

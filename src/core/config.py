@@ -44,6 +44,41 @@ class Settings(BaseSettings):
     GCP_PROJECT_ID: str | None = None
     GCP_REGION: str | None = None
 
+    # -------------------------------------------------
+    # Backwards-compatibility shims
+    # -------------------------------------------------
+
+    @property
+    def ETH_RPC_URL(self) -> str | None:  # noqa: N802 (legacy name)
+        """Primary RPC URL retained for tests that still expect a single
+        endpoint named *ETH_RPC_URL*.
+
+        Preference order:
+
+        1. Explicit *ETH_RPC_URL_1* env var / field
+        2. First entry in *rpc_urls*
+        3. ``None`` if neither is configured
+        """
+        if self.ETH_RPC_URL_1 is not None:
+            return self.ETH_RPC_URL_1.get_secret_value() if isinstance(self.ETH_RPC_URL_1, SecretStr) else str(self.ETH_RPC_URL_1)  # type: ignore[arg-type]
+        if self.rpc_urls:
+            return self.rpc_urls[0]
+        return None
+
+    @ETH_RPC_URL.setter  # type: ignore[override]
+    def ETH_RPC_URL(self, value: str | None):  # noqa: N802
+        """Allow test suites to overwrite the legacy *ETH_RPC_URL* attribute.
+
+        The value is propagated to *ETH_RPC_URL_1* for consistency.
+        """
+        if value is None:
+            self.ETH_RPC_URL_1 = None  # type: ignore[assignment]
+        else:
+            # Store as SecretStr to keep types consistent with original field.
+            from pydantic import SecretStr
+
+            self.ETH_RPC_URL_1 = SecretStr(value)  # type: ignore[assignment]
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
