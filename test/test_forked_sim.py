@@ -6,6 +6,7 @@
 import pytest
 from web3 import Web3
 from decimal import Decimal
+import logging
 
 from src.core.config import settings
 from src.core.tx import TransactionManager
@@ -92,4 +93,4 @@ def test_real_dex_swap_on_forked_mainnet(forked_environment):
     assert whale_weth_after == whale_weth_before - amount_to_swap_wei
     assert whale_usdc_after > whale_usdc_before
     
-    log.info(f"Forked swap successful! Traded 1 WETH for {(whale_usdc_after - whale_usdc_before) / 1e6} USDC.")
+    logging.info(f"Forked swap successful! Traded 1 WETH for {(whale_usdc_after - whale_usdc_before) / 1e6} USDC.")

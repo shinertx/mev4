@@ -1,4 +1,4 @@
- /src/core/resilient_rpc.py
+# /src/core/resilient_rpc.py
 # New module to provide a resilient, multi-node Web3 provider.
 
 from collections import Counter

@@ -68,7 +68,7 @@ class LiquidationStrategy(AbstractStrategy):
                 # ... (build and send flashloan transaction using fees from estimator)
                 # await self.flashloan.initiate_flashloan(...)
                 # ... (update state) ...
-                return new_state
+                return state
 
         except Exception as e:
             log.error("LIQUIDATION_CYCLE_FAILED", error=str(e), exc_info=True)
