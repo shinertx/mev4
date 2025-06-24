@@ -29,3 +29,11 @@ class CexAdapter:
         pass
     
     # All other methods (create_order, get_price) also converted to `async def`
+
+# Legacy alias for backward compatibility with tests
+CEXAdapter = CexAdapter
+
+# Generic exception used by tests and strategy layers
+class CexError(Exception):
+    """Raised for errors originating from the CEX adapter."""
+    pass

@@ -77,3 +77,6 @@ class DexAdapter:
             'maxFeePerGas': (await self.w3.eth.get_block('latest'))['baseFeePerGas'] + priority_fee
         })
         return await self.tx_manager.build_and_send_transaction(tx_params)
+
+# Legacy alias for backward compatibility with older tests/code
+DEXAdapter = DexAdapter

@@ -82,3 +82,24 @@ def check():
         sentry_sdk.capture_message("Kill switch triggered")
         log.critical("KILL_SWITCH_TRIGGERED")
         raise KillSwitchActiveError("Kill switch active")
+
+# --- Legacy Compatibility Wrapper (for existing tests) ---
+
+class KillSwitch:
+    """Legacy class wrapper exposing kill-switch helpers for tests."""
+
+    @staticmethod
+    def activate(reason: str):
+        activate_kill_switch(reason)
+
+    @staticmethod
+    def deactivate():
+        deactivate_kill_switch()
+
+    @staticmethod
+    def check():
+        check()
+
+    @staticmethod
+    def is_active() -> bool:
+        return is_kill_switch_active()

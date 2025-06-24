@@ -19,7 +19,7 @@ class State(BaseModel):
     start_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     capital_base: Dict[str, Decimal] = Field(default_factory=dict)
-    history: List[Dict[str, Any]] = Field(default_factory=list, const=True)
+    history: List[Dict[str, Any]] = Field(default_factory=list)
     
     # --- IDEMPOTENCY FIX ---
     pending_transfers: Set[str] = Field(default_factory=set)

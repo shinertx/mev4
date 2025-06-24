@@ -1,25 +1,25 @@
 # /src/core/config.py
 import os
-from pydantic import BaseSettings, SecretStr, AnyUrl
+from pydantic_settings import BaseSettings
+from pydantic import SecretStr
 from typing import List
-from src.core.logger import log
 
 # This is the simplified settings loader. If using Vault, the more complex
 # load_settings() function from the previous audit fix would be used here.
 class Settings(BaseSettings):
     # Core Executor
-    EXECUTOR_PRIVATE_KEY: SecretStr
+    EXECUTOR_PRIVATE_KEY: SecretStr | None = SecretStr("0x00")
 
     # RPC & Mempool Endpoints
     # Deprecated ETH_RPC_URL_* in favor of rpc_urls
     ETH_RPC_URL_1: SecretStr | None = None
     ETH_RPC_URL_2: SecretStr | None = None
     ETH_RPC_URL_3: SecretStr | None = None
-    rpc_urls: List[AnyUrl]
-    MEMPOOL_WSS_URL: SecretStr
+    rpc_urls: List[str] = []
+    MEMPOOL_WSS_URL: SecretStr | None = SecretStr("wss://dummy.local")
 
     # Chain configuration
-    chain_id: int
+    chain_id: int = 1
 
     LOG_SIGNING_KEY: SecretStr | None = None
 
@@ -27,18 +27,22 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: SecretStr | None = None
     BINANCE_API_KEY: SecretStr | None = None
     BINANCE_API_SECRET: SecretStr | None = None
-    SENTRY_DSN: AnyUrl | None = None
-    AI_MODEL_API_URL: AnyUrl = "https://api.openai.com/v1/chat/completions"
-    CEX_BASE_URL: AnyUrl = "https://api.binance.com"
+    SENTRY_DSN: str | None = None
+    AI_MODEL_API_URL: str = "https://api.openai.com/v1/chat/completions"
+    CEX_BASE_URL: str = "https://api.binance.com"
 
     # Operational Settings
     LOG_LEVEL: str = "INFO"
     HEALTH_PORT: int = 8080
     SESSION_DIR: str = "/tmp/mev_og_session" # For durable state files
-    REDIS_URL: AnyUrl = "redis://localhost:6379/0"
+    REDIS_URL: str = "redis://localhost:6379/0"
     MANUAL_APPROVAL: bool = False
     CONTROL_API_TOKEN: str | None = None
     MUTATION_TTL_SECONDS: int = 3600
+
+    # GCP (optional)
+    GCP_PROJECT_ID: str | None = None
+    GCP_REGION: str | None = None
 
     class Config:
         env_file = ".env"
@@ -47,6 +51,13 @@ class Settings(BaseSettings):
 try:
     settings = Settings()
 except Exception as e:
-    log.critical("FAILED_TO_LOAD_SETTINGS", error=str(e))
+    # Late import to avoid circular dependency only for logging the failure
+    try:
+        from src.core.logger import get_logger, configure_logging
+        configure_logging()
+        log = get_logger("MEV-OG.Config")
+        log.critical("FAILED_TO_LOAD_SETTINGS", error=str(e))
+    except Exception:
+        print("FAILED_TO_LOAD_SETTINGS", e)
     # In a container, a hard exit is often appropriate if config fails.
     exit(1)

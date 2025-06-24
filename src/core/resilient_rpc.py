@@ -3,7 +3,18 @@
 
 from collections import Counter
 from web3 import Web3
-from web3.middleware import geth_poa_middleware
+# --- POA middleware import across Web3 versions ---
+try:
+    # Web3 < 7 (and eth-account <0.9) ships the helper here
+    from web3.middleware import geth_poa_middleware  # type: ignore
+except ImportError:
+    try:
+        # Web3 6.x exposes it via eth_account
+        from eth_account.middleware import construct_poa_middleware as geth_poa_middleware  # type: ignore
+    except ImportError:
+        # Web3 7.x removed the helper entirely – use a no-op shim so code continues to run
+        def geth_poa_middleware(make_request, web3):  # type: ignore
+            return make_request
 from src.core.config import settings
 from src.core.logger import get_logger
 from src.core.decorators import retriable_network_call

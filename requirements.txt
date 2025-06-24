@@ -25,6 +25,7 @@ prometheus-client
 sentry-sdk
 fastapi
 uvicorn
+pydantic-settings
 
 # Testing
 pytest

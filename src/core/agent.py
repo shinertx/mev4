@@ -6,6 +6,7 @@ import asyncio
 import json
 import redis
 from typing import Dict
+import re
 
 from src.core.state import State
 from src.strategies.base import AbstractStrategy
@@ -15,6 +16,10 @@ from src.core import drp
 from src.core.config import settings
 
 log = get_logger(__name__)
+
+class CexError(Exception):
+    """Generic CEX adapter error used in tests."""
+    pass
 
 class Agent:
     """
@@ -42,6 +47,12 @@ class Agent:
         self.run_interval = 60  # Run strategy logic every 60 seconds
         self.mutation_request_interval = 3600 # Request new params every hour
         self.last_mutation_request_time = 0
+        # Simple regex-based guardrail to block unsafe mutation patterns (prompt injection, code exec, etc.)
+        # TODO: make configurable via settings or external policy file
+        self._unsafe_pattern = r"ignore\s+all|system\s+exit|eval\("  # blocklist regex
+
+        # Failure counter for fallback logic
+        self._consecutive_failures = 0
 
     async def _two_phase_commit(self, trades: list):
         check()
@@ -81,6 +92,17 @@ class Agent:
                 # 1. Check for and apply any approved mutations first
                 from src.core.mutation import sandboxed_mutate
                 mutated = await sandboxed_mutate(self.strategy, self.state, self.adapters)
+
+                # Guardrail: inspect mutation proposal before applying
+                if mutated and hasattr(self.strategy, "pending_mutation"):
+                    proposal = str(self.strategy.pending_mutation)
+                    if re.search(self._unsafe_pattern, proposal.lower()):
+                        log.warning("AGENT_GUARDRAIL_BLOCKED_MUTATION", strategy=self.strategy_name,
+                                    reason="Potential prompt injection")
+                        # Drop unsafe mutation
+                        self.strategy.pending_mutation = None
+                        mutated = False
+
                 if mutated:
                     log.warning("AGENT_APPLIED_APPROVED_MUTATION", strategy=self.strategy_name)
 
@@ -97,10 +119,24 @@ class Agent:
                     async with self.state_lock:
                         await drp.save_snapshot(self.state)
                         self.redis.set(f"state:{self.state.session_id}", json.dumps(self.state.to_dict()))
-                except Exception:
+                except Exception as e:
+                    # Roll back state to pre-snapshot
                     async with self.state_lock:
                         self.state = await drp.load_snapshot(pre_snapshot)
-                    raise
+                    log.error("AGENT_STRATEGY_ERROR", strategy=self.strategy_name, error=str(e))
+
+                    # Increment failure count and check threshold
+                    self._consecutive_failures += 1
+                    if self._consecutive_failures > 3:
+                        await self.strategy.abort("Repeated failures")
+                        log.critical("AGENT_HALTED_AFTER_REPEATED_FAILURES", strategy=self.strategy_name)
+                        break
+                    # Continue to next cycle after short delay
+                    await asyncio.sleep(self.run_interval)
+                    continue
+
+                # Reset failure counter on successful cycle
+                self._consecutive_failures = 0
 
                 # 3. Periodically request a new mutation from the LLM
                 now = asyncio.get_event_loop().time()
@@ -116,6 +152,13 @@ class Agent:
                         
                     self.last_mutation_request_time = now
                     
+                # Check for agent handoff signal embedded in state (optional)
+                handoff_target = getattr(self.state, "next_agent", None)
+                if handoff_target:
+                    log.info("AGENT_HANDOFF_TRIGGERED", strategy=self.strategy_name, next_agent=handoff_target)
+                    await self.strategy.abort(f"Handoff to {handoff_target}")
+                    break
+
                 await asyncio.sleep(self.run_interval)
 
             except Exception as e:
