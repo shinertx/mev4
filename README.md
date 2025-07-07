@@ -1,133 +1,139 @@
-# MEV-OG NextGen — Institutional-Grade MEV Engine
+# MEV-OG NextGen
 
-This repository contains the source code for MEV-OG NextGen, a modular, AI-native, and adversarially-resilient crypto trading engine. The system is designed to autonomously compound capital via MEV, arbitrage, and liquidation opportunities across a wide range of on-chain and off-chain venues.
+[![CI](https://github.com/your-org/mev-og/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/mev-og/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-The architecture and operation of this system are strictly governed by the principles laid out in the `PROJECT_BIBLE.md`.
+## Overview
+MEV-OG NextGen is a modular trading engine focused on MEV and arbitrage across both
+DeFi and CeFi venues. It follows the operational and security guidelines
+in [PROJECT_BIBLE.md](PROJECT_BIBLE.md) and is designed to be AI-driven,
+kill-switch aware, and GCP ready.
 
----
+## Architecture & Core Concepts
+- **Modular design**: core logic in `src/core`, adapters in `src/adapters`, and
+  strategy modules in `src/strategies`.
+- **DRP snapshots**: session state is persisted so every agent can roll back or
+  recover on failure.
+- **Kill switch**: `src/core/kill.py` enforces a global circuit breaker checked by
+  every strategy.
+- **Mutation flow**: new strategy parameters are applied with audit logging and
+  optional manual approval.
 
-## 1. System Vision & Core Principles
+## Directory Map
+```
+abis/                # ABI helpers
+contracts/           # Solidity smart contracts
+infra/               # Docker, deploy scripts and configs
+scripts/             # Helper scripts for setup and simulation
+src/                 # Python source code
+src/abis/            # ABI imports for adapters
+src/adapters/        # DEX, CEX, bridge, oracle adapters
+src/core/            # State, kill switch, DRP, logging
+src/strategies/      # Trading strategies
+test/                # Pytest and solidity tests
+```
 
-The system is designed from the ground up to be institutional-grade, with a non-negotiable emphasis on safety, auditability, and resilience.
+## Environment Variables
+| Name | Default | Description |
+| ---- | ------- | ----------- |
+| `EXECUTOR_PRIVATE_KEY` | `0x00` | Hot wallet private key |
+| `ETH_RPC_URL_1` | ⬜ | Primary RPC endpoint |
+| `ETH_RPC_URL_2` | ⬜ | Secondary RPC endpoint |
+| `ETH_RPC_URL_3` | ⬜ | Tertiary RPC endpoint |
+| `MEMPOOL_WSS_URL` | `wss://dummy.local` | Mempool websocket |
+| `BINANCE_API_KEY` | ⬜ | CEX API key |
+| `BINANCE_API_SECRET` | ⬜ | CEX API secret |
+| `AI_MODEL_API_URL` | `https://api.openai.com/v1/chat/completions` | LLM endpoint |
+| `CEX_BASE_URL` | `https://api.binance.com` | CEX base REST URL |
+| `OPENAI_API_KEY` | ⬜ | Optional LLM key |
+| `LOG_SIGNING_KEY` | ⬜ | Optional audit log key |
+| `SENTRY_DSN` | ⬜ | Sentry reporting URL |
+| `LOG_LEVEL` | `INFO` | Logging verbosity |
+| `HEALTH_PORT` | `8080` | Port for `/healthz` |
+| `SESSION_DIR` | `/tmp/mev_og_session` | DRP snapshot location |
+| `REDIS_URL` | `redis://localhost:6379/0` | Replay protection store |
+| `MANUAL_APPROVAL` | `false` | Require approval for mutations |
+| `CONTROL_API_TOKEN` | ⬜ | Token for control API |
+| `MUTATION_TTL_SECONDS` | `3600` | Mutation cache TTL |
+| `GCP_PROJECT_ID` | ⬜ | Google Cloud project ID |
+| `GCP_REGION` | ⬜ | Google Cloud region |
+| `chain_id` | `1` | Target chain ID |
+| `UNISWAP_ROUTER_ADDRESS` | ⬜ | Router address for DEX adapter |
+| `SANDWICH_MIN_PROFIT` | ⬜ | Minimum profit (USD) to attempt |
 
-- **Atomicity & State Isolation:** All trade and session state is atomic, isolated, and rollbackable. There is no global state.
-- **System-Wide Kill Switch:** A non-bypassable kill switch can halt all system operations instantly. Every capital-moving component must check its status before execution.
-- **Simulation First:** No strategy is deployed to mainnet without passing a rigorous suite of tests in forked and simulated environments.
-- **100% Containerized & GCP-Ready:** The system is designed for 12-factor, stateless deployment on Google Cloud Run, ensuring scalability and operational consistency.
-- **Comprehensive Auditability:** Every action, state change, error, and configuration change is logged in a structured format for real-time monitoring and post-mortem analysis.
-
----
-
-## 2. Project Structure
-
-/src/ # Main application source code
-/core/ # Core system components (agent, state, tx, kill, DRP)
-/adapters/ # Modular adapters for external venues (DEX, CEX, Bridge)
-/strategies/ # Implementations of trading/MEV strategies
-/test/ # All unit, integration, and simulation tests
-/infra/ # Docker, Docker Compose, and GCP deployment assets
-/scripts/ # Supporting shell scripts for setup and ops
-.env.example # Template for environment variables and secrets
-requirements.txt # Python package dependencies
-main.py # Main application entrypoint
-PROJECT_BIBLE.md # The constitutional source of truth for the system
-README.md # This file
-
-
----
-
-## 3. Setup and Local Onboarding
-
-Follow these steps to set up the project for local development and testing.
-
-### Prerequisites
-- [Git](https://git-scm.com/)
-- [Python 3.11+](https://www.python.org/)
-- [Docker](https://www.docker.com/) & [Docker Compose](https://docs.docker.com/compose/)
-
-### Step-by-Step Instructions
-
-1.  **Clone the Repository:**
-    ```bash
-    git clone <your-repo-url>
-    cd <your-repo-name>
-    ```
-
-2.  **Create your Environment File:**
-    Copy the example environment file and fill in your details.
-    ```bash
-    cp .env.example .env
-    ```
-    Now, open `.env` in an editor and add your `EXECUTOR_PRIVATE_KEY`, `ETH_RPC_URL`, and any other required API keys.
-
-3.  **Install Python Dependencies:**
-    It is highly recommended to use a Python virtual environment.
-    ```bash
-    python3 -m venv venv
-    source venv/bin/activate
-    pip install --no-cache-dir --upgrade pip
-    pip install --no-cache-dir -r requirements.txt
-    ```
-
----
-
-## 4. Running the System
-
-### Running Locally with Docker Compose
-For standard local development, use Docker Compose. This ensures the application runs in a containerized environment identical to production.
-
-From the `infra/` directory, run:
+## Local Dev Setup
 ```bash
-# Navigate to the infra directory
-cd infra/
+# clone and enter repo
+git clone <repo-url>
+cd <repo>
 
-# Build and start the service in the foreground
-docker-compose up --build
-The application will start, and you will see structured logs in your terminal. To stop the application, press Ctrl+C.
+# create local env
+cp .env.example .env
+# edit .env with your keys
 
-Running Tests
-The system uses pytest for all testing. Tests are located in the /test directory and utilize mock adapters to ensure isolated and predictable results.
+# install deps
+pip install -r requirements.txt
+pip install flake8 pytest pytest-asyncio
 
-From the project root directory, run:
-
+# run lint & tests
+flake8 src/ test/
 pytest
-This command will automatically discover and run all tests. Ensure all tests are passing before committing code.
+```
 
-5. Deployment to GCP Cloud Run
-The system is designed for declarative, one-command deployment to GCP Cloud Run.
-
-Prerequisites
-gcloud CLI: Install and initialize the Google Cloud CLI.
-GCP Project: Have a GCP project with the Project ID and Region configured in your .env file.
-Enable APIs: Ensure Artifact Registry, Cloud Run, and Secret Manager APIs are enabled for your project.
-Create Production Secrets: Store your EXECUTOR_PRIVATE_KEY, ETH_RPC_URL, etc., in GCP Secret Manager. The names must match the keys in infra/cloudrun.yaml.
-Deployment Command
-The deploy.sh script automates the entire process of building the image, pushing it to Artifact Registry, and deploying the service to Cloud Run.
-
-From the infra/ directory, run:
-
-# Make sure the script is executable
-chmod +x deploy.sh
-
-# Run the deployment script
+## Quick-Start / Testnet Guide
+### Local via `bootstrap.sh`
+```bash
+./scripts/bootstrap.sh
+```
+### Docker Compose
+```bash
+cd infra
+docker-compose up --build
+```
+### Cloud Run
+```bash
+cd infra
 ./deploy.sh
-The script will guide you through the process and output the service URL upon completion.
+```
+Deployment parameters are defined in `infra/cloudrun.yaml`.
 
-### GCP Deployment Checklist
-* Set `GOOGLE_APPLICATION_CREDENTIALS` to the path of your service account key file.
-* Grant the service account `roles/storage.admin` on the DRP snapshot bucket.
+## Production Checklist & Liveness
+- Ensure all required secrets exist in GCP Secret Manager.
+- Run `infra/healthcheck.sh` to verify the container is running.
+- HTTP `GET /healthz` returns `{"status": "ok"}` when live.
 
-6. Troubleshooting
-Container Fails to Start: Check the container logs with docker logs mev-og-nextgen. The most common cause is a missing or invalid variable in your .env file.
-Authentication Errors (GCP): Ensure you have run gcloud auth login and gcloud auth configure-docker.
-Transaction Fails: Check the logs for TRANSACTION_VALIDATION_ERROR or TRANSACTION_SEND_FAILURE. This often indicates issues with gas, nonce, or network connectivity.
+## Commands Reference
+- `scripts/bootstrap.sh` – validate env and start app
+- `scripts/simulate_fork.sh` – start a forked Anvil node
+- `infra/deploy.sh` – build and deploy to Cloud Run
+- `infra/healthcheck.sh` – container liveness check
 
----
+## Post-Deploy Actions
+Verify the Cloud Run service URL and monitor metrics in GCP. Update
+secrets and environment variables if strategy parameters change.
 
-### **PROJECT BLUEPRINT COMPLETE**
+## Risk Warnings / Kill-Switch
+### Audit Status
+⬜ audited by third party
+### Legal Disclaimer
+> WARN: All trading strategies are experimental and may result in fund loss.
+Use at your own risk. Compliance with local regulations is your responsibility.
 
-All components specified in the `PROJECT_BIBLE.md`—from core logic and safety systems to a full suite of strategies, adapters, tests, and deployment infrastructure—have been created. The foundational architecture is now complete and validated.
+## Upgrade Path & Versioning
+Contracts use Solidity `^0.8.10`. No proxy pattern is defined ⬜.
+The repo follows Semantic Versioning for releases.
 
-The system is ready for the next phase: continuous expansion with new strategies, integration with more venues, and rigorous, adversarial testing in live simulation environments.
+## Testing & CI Matrix
+- `pytest` for unit and integration tests
+- Fork simulation via `scripts/simulate_fork.sh`
+- Solidity tests such as `test/test_reentrancy_attack.sol`
+- GitHub Actions runs lint and tests on push
 
-I am ready for your next directive.
+## Contributing & FAQ
+Follow guidelines in [AGENTS.md](AGENTS.md). Run `flake8` and
+`pytest` before committing. Questions can be opened as GitHub issues.
+
+## License
+Distributed under the [MIT](LICENSE) license.
+
+✅ README draft complete
